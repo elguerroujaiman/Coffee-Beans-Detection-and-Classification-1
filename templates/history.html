@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Bean QC | History</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 18px 25px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .history-table th {
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .history-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge-good {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--good);
+        }
+
+        .badge-bad {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--bad);
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/"><i class="fas fa-home"></i> Home</a>
+            <a href="/image_detection"><i class="fas fa-image"></i> Image Test</a>
+            <a href="/realtime_detection"><i class="fas fa-video"></i> Real-time</a>
+            <a href="/history" class="active"><i class="fas fa-history"></i> History</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="stats-strip">
+            <div class="stat-item">
+                <span class="stat-val">{{ stats.total_sessions }}</span>
+                <span class="stat-label">Total Sessions</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val">{{ stats.total_beans }}</span>
+                <span class="stat-label">Total Beans Scanned</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" style="color: var(--good);">{{ stats.avg_good_percent|round(1) }}%</span>
+                <span class="stat-label">Avg. Good</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" style="color: var(--bad);">{{ (100 - stats.avg_good_percent)|round(1) if
+                    stats.total_beans > 0 else 0 }}%</span>
+                <span class="stat-label">Avg. Defective</span>
+            </div>
+        </div>
+
+        <h2 style="margin-bottom: 25px;"><i class="fas fa-list"></i> Past Analysis Sessions</h2>
+
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Date & Time</th>
+                    <th>Good</th>
+                    <th>Defective</th>
+                    <th>Total</th>
+                    <th>Good %</th>
+                    <th>Bad %</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr>
+                    <td>{{ session.start_time.split('.')[0] if '.' in session.start_time else session.start_time }}</td>
+                    <td><span class="badge badge-good">{{ session.good_count }}</span></td>
+                    <td><span class="badge badge-bad">{{ session.bad_count }}</span></td>
+                    <td><strong>{{ session.total_count }}</strong></td>
+                    <td>{{ (session.good_count / session.total_count * 100)|round(1) if session.total_count > 0 else 0
+                        }}%</td>
+                    <td>{{ (session.bad_count / session.total_count * 100)|round(1) if session.total_count > 0 else 0
+                        }}%</td>
+                    <td>
+                        <div style="display: flex; gap: 10px;">
+                            <a href="/session/{{ session.id }}" class="btn btn-outline"
+                                style="padding: 6px 12px; font-size: 0.8rem;">
+                                <i class="fas fa-eye"></i> View
+                            </a>
+                            <a href="/delete/{{ session.id }}" class="btn btn-danger"
+                                style="padding: 6px 12px; font-size: 0.8rem;"
+                                onclick="return confirm('Delete this session?')">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,14 @@
+COFFEE BEAN QC REPORT
+=====================
+
+Date: 2026-02-07 19:40:59
+Stats: Good=3, Bad=4, Total=7
+------------------------------
+
+Here is an objective analysis of the session statistics:
+
+During this 61.9-second session, 7 beans were processed. The yield indicates 3 beans (42.9%) were classified as Good, while 4 beans (57.1%) were categorized as Bad. This shows a higher proportion of beans were classified as Bad in this sample.
+
+The average classification confidence was 0.68. Notably, confidence for "Bad" classifications was consistently high (between 0.866 and 0.964), while "Good" classifications registered lower confidence levels (between 0.219 and 0.475).
+
+Operationally, the production line maintained a throughput of 6.8 beans per minute for this session duration.

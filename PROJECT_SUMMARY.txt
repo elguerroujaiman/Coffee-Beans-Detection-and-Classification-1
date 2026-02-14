@@ -1,0 +1,53 @@
+# PROJECT SUMMARY: Coffee Bean Quality Control (BeanGuard AI)
+
+## 1. Project Overview & Purpose
+**Purpose**: To automate the quality control process in coffee production lines by replacing manual inspection with high-speed AI detection. The system identifies defective beans (broken, withered, insect-damaged) to ensure consistent product quality.
+
+BeanGuard AI is an industrial-grade coffee bean quality control system. It uses computer vision (OpenCV) and deep learning (TensorFlow/MobileNetV2) to detect and classify coffee beans as "Good" or "Bad" in real-time. Features include single-image testing, real-time video/webcam inspection, and AI-generated quality analysis reports.
+
+## 2. Technical Architecture (The "Process Separation" Strategy)
+On Windows, TensorFlow and Flask can have DLL conflicts. To solve this, the app uses a multi-process architecture:
+- **`app.py`**: The Flask web server. It handles routing, UI, and process management.
+- **`inference_server.py`**: A persistent server started by app.py. It loads the TensorFlow model ONCE into memory. It provides a `/predict` endpoint for `app.py` to use during single image detection.
+- **`detection_worker.py`**: A standalone script launched as a `subprocess.Popen` when real-time detection starts. It handles the video stream, bean tracking, and Gemini report generation. This avoids GIL and DLL issues.
+- **`detect_image_worker.py`**: A one-off script used for single image uploads to ensure isolation.
+
+## 3. Deep Learning Model
+- **Filename**: `coffee_mobile_net_tuned.h5`
+- **Architecture**: MobileNetV2 based (tuned for coffee beans).
+- **Input Size**: 224x224 (RGB).
+- **Preprocessing**: (pixel_values / 127.5) - 1.0 (MobileNet standard).
+- **Classification**: Binary (0 = Good, 1 = Bad).
+- **Inference Speed**: ~20-50ms on CPU once loaded.
+
+## 4. AI Report Generation (Gemini API)
+- **Library**: `google-generativeai`
+- **Model**: `gemini-2.5-flash` (Verified working in this environment).
+- **Logic**: When detection stops, the worker gathers session data (good count, bad count, duration, confidence) and sends a structured prompt to Gemini.
+- **Fallback**: If the API quota is hit (429) or model is missing (404), there is an internal `generate_llm_report` fallback that creates a professional-looking local report.
+
+## 5. Key Infrastructure & Files
+- **`database.py`**: SQLite database (`coffee_qc.db`) storing session history and AI reports.
+- **`static/style.css`**: Modern charcoal/gold theme with glassmorphism and FontAwesome icons.
+- **`live_stats.json`**: A sync file between the background worker and the Flask dashboard for real-time UI updates.
+- **`stop_worker.flag`**: A file-based communication flag used to tell the worker to shut down gracefully on Windows.
+- **`.env`**: Stores `GEMINI_API_KEY`.
+
+## 6. Important Implementation Details
+- **Signal Handling**: The worker uses `signal.SIGTERM` and `signal.SIGINT` to catch stops and trigger `save_session_to_db`.
+- **Windows Fixes**:
+    - `os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'` (Prevents OpenCV/TF collision).
+    - `flask run --no-reload` (Debug mode is disabled to prevent subprocess duplication).
+- **Tracking**: Uses a centroid-based tracker to follow beans and classify them only once when they enter the "Tracking" zone.
+
+## 7. Next Steps / Current State
+The project is currently stable. AI reports are generated successfully via Gemini 2.5-Flash. UI is polished with percentage-based stats. All text-decoration artifacts have been removed.
+
+## 8. Legacy / Alternative Models (YOLO)
+We also trained a **YOLOv8** model for this task.
+- **Why it was explored**: YOLO is excellent for object detection (bounding boxes + classification) and handles overlapping beans well.
+- **Why we switched**: For this specific iteration, we chose a **Motion-Tracking + MobileNetV2** approach to have granular control over the "Tracking Zone" logic and to run lightweight classification on specific crops. 
+- **Status**: The YOLO model weights and training scripts are preserved in the project history/colab notebooks should future requirements demand a switch back to pure object detection.
+
+---
+*Created on 2026-02-14 for Project Handover.*

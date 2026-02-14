@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Bean QC | Real-time Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/"><i class="fas fa-home"></i> Home</a>
+            <a href="/image_detection"><i class="fas fa-image"></i> Image Test</a>
+            <a href="/realtime_detection" class="active"><i class="fas fa-video"></i> Real-time</a>
+            <a href="/history"><i class="fas fa-history"></i> History</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 900px;">
+        <div class="stats-strip">
+            <div class="stat-item">
+                <span class="stat-val" id="live-good">0</span>
+                <span class="stat-label">Good</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" id="live-bad" style="color: var(--bad);">Defective</span>
+                <span class="stat-label">Bad</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" id="live-total">0</span>
+                <span class="stat-label">Total Session</span>
+            </div>
+            <div class="stat-item" style="margin-left: auto; border-left: 1px solid var(--border); padding-left: 40px;">
+                <span class="stat-val" id="status-text"
+                    style="color: var(--text-secondary); font-size: 1rem;">IDLE</span>
+                <span class="stat-label">System Status</span>
+            </div>
+        </div>
+
+        <div class="preview-box" style="min-height: 500px; justify-content: center; align-items: center;">
+            <div class="source-toggle">
+                <button id="mode-cam" class="toggle-btn active" onclick="setMode('cam')"><i class="fas fa-camera"></i>
+                    Webcam</button>
+                <button id="mode-vid" class="toggle-btn" onclick="setMode('vid')"><i class="fas fa-file-video"></i>
+                    Upload Video</button>
+            </div>
+
+            <div id="video-upload-area" style="display: none; margin-bottom: 20px; text-align: center;">
+                <label for="video-input" class="btn btn-outline" style="display: inline-flex;">
+                    <i class="fas fa-upload"></i> Choose Video File
+                </label>
+                <input type="file" id="video-input" accept="video/*" style="display: none;">
+                <p id="video-name" style="margin-top: 10px; color: var(--accent); font-size: 0.9rem;"></p>
+            </div>
+
+            <div class="image-container" id="monitor-area" style="width: 100%; border: 2px dashed var(--border);">
+                <div class="empty-state" id="placeholder">
+                    <i class="fas fa-display"></i>
+                    <p>Live feed will appear in a separate window</p>
+                    <small style="color: var(--text-secondary);">Using OpenCV native display for maximum
+                        performance</small>
+                </div>
+                <div class="spinner" id="active-spinner" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="ctrl-btn" class="btn btn-primary">
+            <i class="fas fa-play"></i> Start Inspection
+        </button>
+        <button id="stop-btn" class="btn btn-danger" style="display: none;">
+            <i class="fas fa-stop"></i> Stop & Save
+        </button>
+    </div>
+
+    <script>
+        let currentMode = 'cam';
+        let isRunning = false;
+        let pollInterval = null;
+        let selectedVideoPath = null;
+
+        function setMode(mode) {
+            if (isRunning) return;
+            currentMode = mode;
+            document.getElementById('mode-cam').classList.toggle('active', mode === 'cam');
+            document.getElementById('mode-vid').classList.toggle('active', mode === 'vid');
+            document.getElementById('video-upload-area').style.display = mode === 'vid' ? 'block' : 'none';
+        }
+
+        document.getElementById('video-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('video-name').innerText = "Uploading " + file.name + "...";
+            const formData = new FormData();
+            formData.append('video', file);
+
+            try {
+                const res = await fetch('/upload_video', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    selectedVideoPath = data.video_path;
+                    document.getElementById('video-name').innerText = "Ready: " + file.name;
+                }
+            } catch (e) {
+                alert("Upload failed");
+            }
+        });
+
+        const ctrlBtn = document.getElementById('ctrl-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusText = document.getElementById('status-text');
+        const spinner = document.getElementById('active-spinner');
+        const placeholder = document.getElementById('placeholder');
+
+        ctrlBtn.addEventListener('click', async () => {
+            let source = currentMode === 'cam' ? '0' : selectedVideoPath;
+            if (currentMode === 'vid' && !selectedVideoPath) {
+                alert("Please select a video file first");
+                return;
+            }
+
+            ctrlBtn.disabled = true;
+            statusText.innerText = "STARTING...";
+
+            const res = await fetch(`/start?source=${encodeURIComponent(source)}`);
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                isRunning = true;
+                ctrlBtn.style.display = 'none';
+                stopBtn.style.display = 'flex';
+                spinner.style.display = 'block';
+                placeholder.style.display = 'none';
+                statusText.innerText = "RUNNING";
+                statusText.style.color = "var(--good)";
+                startPolling();
+            } else {
+                alert(data.message);
+                ctrlBtn.disabled = false;
+                statusText.innerText = "IDLE";
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            stopBtn.disabled = true;
+            statusText.innerText = "STOPPING...";
+
+            try {
+                const res = await fetch('/stop');
+                const data = await res.json();
+
+                if (data.status === 'success' || data.message === "No detection running") {
+                    resetUI();
+                } else {
+                    alert("Stop failed: " + data.message);
+                    stopBtn.disabled = false;
+                    statusText.innerText = "RUNNING";
+                }
+            } catch (e) {
+                console.error("Stop Error:", e);
+                resetUI(); // Force reset on network error
+            }
+        });
+
+        function resetUI() {
+            isRunning = false;
+            stopBtn.style.display = 'none';
+            stopBtn.disabled = false;
+            ctrlBtn.style.display = 'flex';
+            ctrlBtn.disabled = false;
+            spinner.style.display = 'none';
+            placeholder.style.display = 'block';
+            statusText.innerText = "SESSION SAVED";
+            statusText.style.color = "var(--accent)";
+            clearInterval(pollInterval);
+        }
+
+        function startPolling() {
+            pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/live_stats');
+                    const data = await res.json();
+                    document.getElementById('live-good').innerText = data.good_count || 0;
+                    document.getElementById('live-bad').innerText = data.bad_count || 0;
+                    document.getElementById('live-total').innerText = data.total || 0;
+                } catch (e) { }
+            }, 1000);
+        }
+    </script>
+</body>
+
+</html>

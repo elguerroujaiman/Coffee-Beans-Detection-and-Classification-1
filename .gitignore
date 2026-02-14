@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+
+# Database
+sessions.db
+
+# Logs & Temporary
+worker_crash.log
+live_stats.json
+stop_worker.flag
+temp_uploads/
+uploads/

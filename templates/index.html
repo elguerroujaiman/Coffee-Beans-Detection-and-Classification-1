@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Bean QC | Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- FontAwesome for professional icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/" class="active"><i class="fas fa-home"></i> Home</a>
+            <a href="/image_detection"><i class="fas fa-image"></i> Image Test</a>
+            <a href="/realtime_detection"><i class="fas fa-video"></i> Real-time</a>
+            <a href="/history"><i class="fas fa-history"></i> History</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <section class="hero">
+            <h1>Quality Control, Simplified.</h1>
+            <p>
+                Advanced AI-powered detection and classification for coffee beans. 
+                Identify defects, count stock, and generate detailed quality reports with precision and speed.
+            </p>
+            
+            <div class="nav-cards">
+                <a href="/image_detection" class="card">
+                    <i class="fas fa-file-arrow-up"></i>
+                    <h3>Image Detection</h3>
+                    <p>Upload a static photo of your beans for instant analysis and classification.</p>
+                </a>
+
+                <a href="/realtime_detection" class="card">
+                    <i class="fas fa-camera"></i>
+                    <h3>Real-time Stream</h3>
+                    <p>Connect your webcam or upload a video for continuous live tracking and counting.</p>
+                </a>
+            </div>
+        </section>
+    </div>
+
+    <footer style="text-align: center; padding: 40px; color: var(--text-secondary); font-size: 0.8rem;">
+        &copy; 2026 BeanGuard AI Systems. All rights reserved.
+    </footer>
+</body>
+</html>

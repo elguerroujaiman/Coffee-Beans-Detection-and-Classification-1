@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Bean QC | Image Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/"><i class="fas fa-home"></i> Home</a>
+            <a href="/image_detection" class="active"><i class="fas fa-image"></i> Image Test</a>
+            <a href="/realtime_detection"><i class="fas fa-video"></i> Real-time</a>
+            <a href="/history"><i class="fas fa-history"></i> History</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="info-tip">
+            <i class="fas fa-lightbulb"></i>
+            <strong>Pro Tip:</strong> For best results, ensure beans are spread out (not touching) on a <strong>plain
+                white background</strong> with clear lighting.
+        </div>
+
+        <div class="stats-strip" id="results-strip" style="display: none;">
+            <div class="stat-item">
+                <span class="stat-val" id="good-count">0</span>
+                <span class="stat-label">Good Beans</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" id="bad-count">0</span>
+                <span class="stat-label" style="color: var(--bad);">Defective</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-val" id="total-count">0</span>
+                <span class="stat-label">Total Found</span>
+            </div>
+        </div>
+
+        <div class="detection-grid">
+            <!-- Original Image -->
+            <div class="preview-box">
+                <h2><i class="fas fa-camera"></i> Original Image</h2>
+                <div class="image-container" id="orig-container">
+                    <div class="empty-state">
+                        <i class="fas fa-upload"></i>
+                        <p>No image uploaded</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detected Result -->
+            <div class="preview-box">
+                <h2><i class="fas fa-microscope"></i> AI Analysis</h2>
+                <div class="image-container" id="detect-container">
+                    <div class="empty-state">
+                        <i class="fas fa-wand-magic-sparkles"></i>
+                        <p>Waiting for detection...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <label for="image-upload" class="btn btn-outline">
+            <i class="fas fa-folder-open"></i> Select Image
+        </label>
+        <input type="file" id="image-upload" accept="image/*" style="display: none;">
+
+        <button id="start-btn" class="btn btn-primary" disabled>
+            <i class="fas fa-play"></i> Run Detection
+        </button>
+    </div>
+
+    <script>
+        const uploadInput = document.getElementById('image-upload');
+        const startBtn = document.getElementById('start-btn');
+        const origContainer = document.getElementById('orig-container');
+        const detectContainer = document.getElementById('detect-container');
+        const statsStrip = document.getElementById('results-strip');
+
+        uploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (re) => {
+                    origContainer.innerHTML = `<img src="${re.target.result}" alt="Original">`;
+                    detectContainer.innerHTML = `
+                         <div class="empty-state">
+                            <i class="fas fa-wand-magic-sparkles"></i>
+                            <p>Ready to analyze</p>
+                        </div>`;
+                    startBtn.disabled = false;
+                    statsStrip.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        startBtn.addEventListener('click', async () => {
+            const file = uploadInput.files[0];
+            if (!file) return;
+
+            // UI State: Checking
+            startBtn.disabled = true;
+            detectContainer.innerHTML = '<div class="spinner"></div>';
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const response = await fetch('/detect_image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    detectContainer.innerHTML = `<img src="${data.detected}" alt="Detected">`;
+                    document.getElementById('good-count').innerText = data.good_count;
+                    document.getElementById('bad-count').innerText = data.bad_count;
+                    document.getElementById('total-count').innerText = data.total;
+                    statsStrip.style.display = 'flex';
+                } else {
+                    alert('Error: ' + (data.error || 'Detection failed'));
+                }
+            } catch (err) {
+                alert('Connection error: ' + err.message);
+            } finally {
+                startBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>
