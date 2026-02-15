@@ -32,7 +32,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # DON'T configure Gemini here - only when generating report (saves API calls)
 
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
-CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.20"))
+CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.60"))
 # Detection settings
 MIN_AREA = 1500
 MAX_AREA = 999999

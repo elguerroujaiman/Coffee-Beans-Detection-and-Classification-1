@@ -9,7 +9,7 @@ import base64
 # --- Configuration ---
 app = Flask(__name__)
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
-CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.50"))
+CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.60"))
 MIN_AREA = 500
 MAX_AREA = 500000
 MIN_ASPECT_RATIO = 0.35
