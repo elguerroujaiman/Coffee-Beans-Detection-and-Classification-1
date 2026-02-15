@@ -66,12 +66,6 @@ CLASSIFY_CENTER_MAX_X_RATIO = float(os.getenv("CLASSIFY_CENTER_MAX_X_RATIO", "0.
 LIVE_STATS_FILE = "live_stats.json"
 WORKER_RESULT_FILE = "worker_result.json"
 STREAM_PORT = int(os.getenv("STREAM_PORT", "5002"))
-DEBUG_OUTPUT_BASE = os.getenv("DEBUG_OUTPUT_BASE", "debug_outputs")
-DEBUG_WINDOW_NAME = "BeanGuard Debug"
-
-def env_enabled(name, default="0"):
-    value = str(os.getenv(name, default)).strip().lower()
-    return value in {"1", "true", "yes", "on"}
 
 # Streaming Globals
 output_lock = threading.Lock()
@@ -271,75 +265,10 @@ def extract_blob(cnt):
 
     return x, y, w, h
 
-def build_debug_visualization(frame, thresh, current_blobs, active_beans, mask_fill_ratio, total_good, total_bad):
-    """Compose a 2x2 debug board showing detection/segmentation internals."""
-    candidates_view = frame.copy()
-    for idx, (_, box) in enumerate(current_blobs):
-        x, y, w, h = box
-        cv2.rectangle(candidates_view, (x, y), (x + w, y + h), (0, 255, 255), 2)
-        cv2.putText(
-            candidates_view,
-            f"C{idx + 1}",
-            (x, max(y - 8, 18)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 255),
-            1,
-        )
-
-    tracks_view = frame.copy()
-    for bean in active_beans:
-        x, y, w, h = bean.box
-        color = bean.color if bean.label != "Unknown" else (130, 130, 130)
-        cv2.rectangle(tracks_view, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(
-            tracks_view,
-            f"ID{bean.id}:{bean.label}",
-            (x, max(y - 8, 18)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            color,
-            1,
-        )
-
-    mask_bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
-    isolated = cv2.bitwise_and(frame, frame, mask=thresh)
-
-    panel_w, panel_h = 480, 270
-    top_left = cv2.resize(candidates_view, (panel_w, panel_h), interpolation=cv2.INTER_AREA)
-    top_right = cv2.resize(mask_bgr, (panel_w, panel_h), interpolation=cv2.INTER_NEAREST)
-    bottom_left = cv2.resize(isolated, (panel_w, panel_h), interpolation=cv2.INTER_AREA)
-    bottom_right = cv2.resize(tracks_view, (panel_w, panel_h), interpolation=cv2.INTER_AREA)
-
-    board = np.zeros((panel_h * 2, panel_w * 2, 3), dtype=np.uint8)
-    board[:panel_h, :panel_w] = top_left
-    board[:panel_h, panel_w:] = top_right
-    board[panel_h:, :panel_w] = bottom_left
-    board[panel_h:, panel_w:] = bottom_right
-
-    cv2.putText(board, "Candidates", (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 2)
-    cv2.putText(board, "Mask", (panel_w + 12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
-    cv2.putText(board, "Isolated", (12, panel_h + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 220, 0), 2)
-    cv2.putText(board, "Tracked", (panel_w + 12, panel_h + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 220, 0), 2)
-    cv2.putText(
-        board,
-        f"mask_fill={mask_fill_ratio:.3f}  good={total_good}  bad={total_bad}  active={len(active_beans)}",
-        (12, board.shape[0] - 12),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        (255, 255, 255),
-        1,
-    )
-    return board
-
 def classify_bean_once(
     classifier,
     img,
     box,
-    bean_id=None,
-    frame_idx=None,
-    debug_dir=None,
-    precomputed_brown_ratio=None,
 ):
     """Classify a bean crop exactly once and return (label, confidence, color)."""
     h_img, w_img = img.shape[:2]
@@ -357,12 +286,6 @@ def classify_bean_once(
     if crop.size == 0:
         return None
 
-    brown_ratio = (
-        float(precomputed_brown_ratio)
-        if precomputed_brown_ratio is not None
-        else bean_color_ratio(crop)
-    )
-
     try:
         resized = cv2.resize(crop, (224, 224))
         img_array = tf.keras.preprocessing.image.img_to_array(resized)
@@ -376,38 +299,6 @@ def classify_bean_once(
         label, confidence, color = "Good", score, (0, 255, 0)
     else:
         label, confidence, color = "Bad", 1.0 - score, (0, 0, 255)
-
-    if debug_dir:
-        safe_label = label.lower()
-        safe_score = f"{score:.4f}".replace(".", "p")
-        bean_str = str(bean_id) if bean_id is not None else "na"
-        frame_str = str(frame_idx) if frame_idx is not None else "na"
-        base_name = f"bean_{bean_str}_frame_{frame_str}_{safe_label}_{safe_score}"
-        try:
-            os.makedirs(debug_dir, exist_ok=True)
-            raw_path = os.path.join(debug_dir, f"{base_name}_raw.jpg")
-            input_path = os.path.join(debug_dir, f"{base_name}_input224.jpg")
-            meta_path = os.path.join(debug_dir, f"{base_name}.json")
-            cv2.imwrite(raw_path, crop)
-            cv2.imwrite(input_path, resized)
-            with open(meta_path, "w", encoding="utf-8") as mf:
-                json.dump(
-                    {
-                        "bean_id": bean_id,
-                        "frame_idx": frame_idx,
-                        "box": [int(x), int(y), int(w), int(h)],
-                        "box_area": int(w * h),
-                        "threshold": float(CLASSIFICATION_THRESHOLD),
-                        "brown_ratio": float(brown_ratio),
-                        "raw_score_good": float(score),
-                        "predicted_label": label,
-                        "confidence": float(confidence),
-                    },
-                    mf,
-                    indent=2,
-                )
-        except OSError:
-            pass
 
     return label, confidence, color
 
@@ -571,11 +462,6 @@ def main():
     start_time = time.time()
     last_stats_update = time.time()
     cap = None
-    debug_window_enabled = env_enabled("REALTIME_DEBUG_WINDOW", "0")
-    save_classifier_crops = env_enabled("SAVE_CLASSIFIER_CROPS", "1")
-    debug_root_dir = None
-    classifier_debug_dir = None
-    frame_idx = 0
 
     def handle_exit(sig, frame):
         print(f"\nShutdown signal ({sig}) received. Saving...")
@@ -583,7 +469,6 @@ def main():
             nonlocal session_data, start_time, cap
             save_session_to_db(session_data, start_time, SESSION_USER_ID)
             if cap: cap.release()
-            cv2.destroyAllWindows()
         except:
             pass
         sys.exit(0)
@@ -611,15 +496,6 @@ def main():
             print("Error: Could not open video source.")
             update_live_stats(0, 0, 0, "error")
             return
-
-        if debug_window_enabled or save_classifier_crops:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            debug_root_dir = os.path.join(DEBUG_OUTPUT_BASE, f"debug_{timestamp}")
-            os.makedirs(debug_root_dir, exist_ok=True)
-            if save_classifier_crops:
-                classifier_debug_dir = os.path.join(debug_root_dir, "classifier_inputs")
-                os.makedirs(classifier_debug_dir, exist_ok=True)
-            print(f"Debug outputs: {debug_root_dir}")
 
         source_is_webcam = isinstance(VIDEO_PATH, int)
         source_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
@@ -682,7 +558,6 @@ def main():
                     save_session_to_db(session_data, start_time, SESSION_USER_ID)
                     break
                 file_read_failures = 0
-                frame_idx += 1
                 
                 h_orig, w_orig = img.shape[:2]
 
@@ -806,7 +681,7 @@ def main():
                                 horizontal_ready
                             )
                         )
-                        candidate_ok, _, brown_ratio = candidate_quality_check(
+                        candidate_ok, _, _ = candidate_quality_check(
                             img, bean.box, h_orig, require_vertical_clear=False
                         )
                         if (
@@ -819,10 +694,6 @@ def main():
                                 classifier,
                                 img,
                                 bean.box,
-                                bean_id=bean.id,
-                                frame_idx=frame_idx,
-                                debug_dir=classifier_debug_dir if save_classifier_crops else None,
-                                precomputed_brown_ratio=brown_ratio,
                             )
                             if classification is not None:
                                 bean.label, bean.confidence, bean.color = classification
@@ -869,27 +740,6 @@ def main():
                 if time.time() - last_stats_update > 0.5:
                     update_live_stats(total_good, total_bad, len(active_beans), "running")
                     last_stats_update = time.time()
-
-                if debug_window_enabled:
-                    try:
-                        debug_board = build_debug_visualization(
-                            img,
-                            thresh,
-                            current_blobs,
-                            active_beans,
-                            mask_fill_ratio,
-                            total_good,
-                            total_bad,
-                        )
-                        cv2.imshow(DEBUG_WINDOW_NAME, debug_board)
-                        key = cv2.waitKey(1) & 0xFF
-                        if key == 27:
-                            cv2.destroyWindow(DEBUG_WINDOW_NAME)
-                            debug_window_enabled = False
-                            print("Debug window closed (ESC).")
-                    except cv2.error as e:
-                        print(f"Debug window disabled: {e}")
-                        debug_window_enabled = False
                 
                 # UPDATE GLOBAL FRAME FOR STREAMING
                 with output_lock:
@@ -918,10 +768,6 @@ def main():
     finally:
         if cap:
             cap.release()
-        try:
-            cv2.destroyAllWindows()
-        except cv2.error:
-            pass
 
 if __name__ == "__main__":
     main()
