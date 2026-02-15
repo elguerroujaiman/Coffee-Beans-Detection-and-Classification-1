@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BeanGuard AI | Sign Up</title>
+    <title>CoffeeBean Classifier | Sign Up</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -12,8 +12,8 @@
 <body>
     <nav class="navbar">
         <a href="/login" class="nav-logo">
-            <i class="fas fa-seedling"></i>
-            <span>BeanGuard AI</span>
+            <img src="{{ url_for('static', filename='coffee-bean-icon.svg') }}" alt="Coffee bean logo" class="brand-bean-icon">
+            <span>CB Classifier</span>
         </a>
         <div class="nav-links">
             <a href="/login"><i class="fas fa-right-to-bracket"></i> Login</a>
@@ -59,3 +59,6 @@
 </body>
 
 </html>
+
+
+

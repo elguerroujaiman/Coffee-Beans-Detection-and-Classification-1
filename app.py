@@ -17,9 +17,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "bean-guard-local-secret-change-me")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
 REMEMBER_COOKIE_NAME = "bean_guard_remember"
+REMEMBER_HINT_COOKIE_NAME = "bean_guard_remember_hint"
 REMEMBER_DAYS = 10
+TAB_BOOT_COOKIE_NAME = "bean_guard_tab_boot"
+TAB_BOOT_SECONDS = 20
 WORKER_RESULT_FILE = "worker_result.json"
 
 # Global variables
@@ -51,6 +57,8 @@ def _is_api_request_path(path):
 
 
 def _set_logged_in_user(user):
+    # Default login session is browser-session only unless remember token is used.
+    session.permanent = False
     session["user_id"] = user["id"]
     session["username"] = user["username"]
 
@@ -87,7 +95,12 @@ def _read_worker_result():
 def _stop_payload_from_worker_result(default_message):
     result = _read_worker_result()
     if not result:
-        return {"status": "success", "message": default_message, "saved": True}
+        return {
+            "status": "success",
+            "message": "Session was not saved.",
+            "saved": False,
+            "reason": "no_result",
+        }
 
     saved = bool(result.get("saved"))
     reason = result.get("reason")
@@ -97,7 +110,7 @@ def _stop_payload_from_worker_result(default_message):
     elif saved:
         message = "Session saved successfully."
     else:
-        message = default_message
+        message = "Session was not saved."
 
     return {
         "status": "success",
@@ -220,6 +233,7 @@ def login():
             if existing_raw:
                 database.delete_remember_token(_hash_token(existing_raw))
                 response.delete_cookie(REMEMBER_COOKIE_NAME)
+            response.delete_cookie(REMEMBER_HINT_COOKIE_NAME)
 
             if remember_me:
                 token_raw = secrets.token_urlsafe(48)
@@ -234,6 +248,25 @@ def login():
                     token_raw,
                     max_age=REMEMBER_DAYS * 24 * 60 * 60,
                     httponly=True,
+                    samesite="Lax",
+                )
+                # Non-sensitive UI hint so frontend can distinguish remembered sessions.
+                response.set_cookie(
+                    REMEMBER_HINT_COOKIE_NAME,
+                    "1",
+                    max_age=REMEMBER_DAYS * 24 * 60 * 60,
+                    httponly=False,
+                    samesite="Lax",
+                )
+                response.delete_cookie(TAB_BOOT_COOKIE_NAME)
+            else:
+                # Short-lived bootstrap cookie lets the current tab initialize
+                # once, then future reopened tabs require login again.
+                response.set_cookie(
+                    TAB_BOOT_COOKIE_NAME,
+                    "1",
+                    max_age=TAB_BOOT_SECONDS,
+                    httponly=False,
                     samesite="Lax",
                 )
             return response
@@ -272,7 +305,15 @@ def signup():
             elif user_id:
                 session.clear()
                 _set_logged_in_user({"id": user_id, "username": username})
-                return redirect(url_for("home"))
+                response = redirect(url_for("home"))
+                response.set_cookie(
+                    TAB_BOOT_COOKIE_NAME,
+                    "1",
+                    max_age=TAB_BOOT_SECONDS,
+                    httponly=False,
+                    samesite="Lax",
+                )
+                return response
             else:
                 error = "Could not create account. Please try again."
 
@@ -286,6 +327,8 @@ def logout():
     if remember_raw:
         database.delete_remember_token(_hash_token(remember_raw))
     response.delete_cookie(REMEMBER_COOKIE_NAME)
+    response.delete_cookie(REMEMBER_HINT_COOKIE_NAME)
+    response.delete_cookie(TAB_BOOT_COOKIE_NAME)
     session.clear()
     return response
 
@@ -372,11 +415,17 @@ def stop_detection():
     global detection_process, active_stream_port
 
     if not detection_process:
-        return jsonify({"status": "error", "message": "No detection running"})
+        return jsonify({
+            "status": "success",
+            "message": "No detection running.",
+            "saved": False,
+            "reason": "no_process",
+        })
 
     if detection_process.poll() is not None:
         if os.path.exists("stop_worker.flag"):
             os.remove("stop_worker.flag")
+        detection_process = None
         active_stream_port = None
         return jsonify(_stop_payload_from_worker_result("Already stopped"))
 
@@ -391,6 +440,7 @@ def stop_detection():
 
     if os.path.exists("stop_worker.flag"):
         os.remove("stop_worker.flag")
+    detection_process = None
     active_stream_port = None
     return jsonify(_stop_payload_from_worker_result("Detection stopped"))
 

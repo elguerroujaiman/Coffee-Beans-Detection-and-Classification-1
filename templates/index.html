@@ -1,18 +1,19 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coffee Bean QC | Home</title>
+    <title>CoffeeBean Classifier | Home</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <!-- FontAwesome for professional icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='auth_session.js') }}"></script>
 </head>
-<body>
+<body class="home-page">
     <nav class="navbar">
         <a href="/" class="nav-logo">
-            <i class="fas fa-seedling"></i>
-            <span>BeanGuard AI</span>
+            <img src="{{ url_for('static', filename='coffee-bean-icon.svg') }}" alt="Coffee bean logo" class="brand-bean-icon">
+            <span>CB Classifier</span>
         </a>
         <div class="nav-links">
             <a href="/" class="active"><i class="fas fa-home"></i> Home</a>
@@ -26,10 +27,10 @@
 
     <div class="container">
         <section class="hero">
-            <h1>Quality Control, Simplified.</h1>
+            <h1>Coffee Bean Classification, Simplified.</h1>
             <p>
-                Advanced AI-powered detection and classification for coffee beans. 
-                Identify defects, count stock, and generate detailed quality reports with precision and speed.
+                AI-powered coffee bean detection and classification for local quality control.
+                Classify beans as Good or Bad in images and real-time streams with clear live counts and saved reports.
             </p>
             
             <div class="nav-cards">
@@ -48,8 +49,11 @@
         </section>
     </div>
 
-    <footer style="text-align: center; padding: 40px; color: var(--text-secondary); font-size: 0.8rem;">
-        &copy; 2026 BeanGuard AI Systems. All rights reserved.
+    <footer class="home-footer">
+        &copy; 2026 CoffeeBean Classifier.
     </footer>
 </body>
 </html>
+
+
+

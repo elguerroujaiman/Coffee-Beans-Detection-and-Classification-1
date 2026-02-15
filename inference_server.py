@@ -136,7 +136,7 @@ def predict():
         else: bad += 1
             
         cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(output, f"{label} {conf*100:.1f}%", (x, max(y - 10, 20)),
+        cv2.putText(output, label, (x, max(y - 10, 20)),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     # 3. Encode result

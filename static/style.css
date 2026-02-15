@@ -8,7 +8,7 @@
     --good: #22c55e;
     --bad: #ef4444;
     --border: #334155;
-    --header-h: 70px;
+    --header-h: 62px;
 }
 
 * {
@@ -45,21 +45,29 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: var(--accent);
     text-decoration: none;
 }
 
+.brand-bean-icon {
+    width: 24px;
+    height: 24px;
+    display: block;
+    flex: 0 0 24px;
+}
+
 .nav-links {
     display: flex;
-    gap: 30px;
+    gap: 24px;
 }
 
 .nav-links a {
     color: var(--text-secondary);
     text-decoration: none !important;
     font-weight: 500;
+    font-size: 1rem;
     transition: 0.3s;
     display: flex;
     align-items: center;
@@ -77,6 +85,7 @@ body {
     align-items: center;
     gap: 8px;
     font-weight: 600;
+    font-size: 1rem;
 }
 
 .container {
@@ -115,6 +124,59 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 30px;
     margin-top: 20px;
+}
+
+.home-page .container {
+    margin: 0 auto;
+    padding: 0 20px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.home-page .hero {
+    padding: 2px 16px 8px;
+}
+
+.home-page .hero h1 {
+    font-size: clamp(2.5rem, 4.8vw, 3.3rem);
+    margin-bottom: 12px;
+}
+
+.home-page .hero p {
+    font-size: 1.08rem;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.home-page .nav-cards {
+    margin-top: 8px;
+    gap: 18px;
+}
+
+.home-page .card {
+    padding: 28px 24px;
+}
+
+.home-page .card i {
+    font-size: 2.6rem;
+    margin-bottom: 14px;
+}
+
+.home-page .card h3 {
+    margin-bottom: 10px;
+}
+
+.home-page .card p {
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.home-footer {
+    text-align: center;
+    padding: 10px 16px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
 }
 
 .card {
@@ -679,3 +741,4 @@ body {
         width: auto;
     }
 }
+

@@ -1,12 +1,13 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coffee Bean QC | History</title>
+    <title>CoffeeBean Classifier | History</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='auth_session.js') }}"></script>
     <style>
         .history-table {
             width: 100%;
@@ -58,8 +59,8 @@
 <body>
     <nav class="navbar">
         <a href="/" class="nav-logo">
-            <i class="fas fa-seedling"></i>
-            <span>BeanGuard AI</span>
+            <img src="{{ url_for('static', filename='coffee-bean-icon.svg') }}" alt="Coffee bean logo" class="brand-bean-icon">
+            <span>CB Classifier</span>
         </a>
         <div class="nav-links">
             <a href="/"><i class="fas fa-home"></i> Home</a>
@@ -138,3 +139,6 @@
 </body>
 
 </html>
+
+
+
