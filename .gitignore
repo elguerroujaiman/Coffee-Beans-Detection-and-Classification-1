@@ -14,3 +14,4 @@ live_stats.json
 stop_worker.flag
 temp_uploads/
 uploads/
+debug_outputs/
