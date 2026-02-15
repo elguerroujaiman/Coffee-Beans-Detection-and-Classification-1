@@ -3,11 +3,20 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 import time
+import argparse
 import os
 import json
 import datetime
 import signal
 import sys
+import threading
+from flask import Flask, Response
+import logging
+
+# Mute Flask startup
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
 from dotenv import load_dotenv
 import google.generativeai as genai
 import database
@@ -23,20 +32,93 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # DON'T configure Gemini here - only when generating report (saves API calls)
 
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
-CLASSIFICATION_THRESHOLD = 0.20
+CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.20"))
 # Detection settings
-MIN_AREA = 1500   
+MIN_AREA = 1500
 MAX_AREA = 999999
 TRACKING_DISTANCE_THRESHOLD = 100
+ENTRY_REGION_RATIO = 0.30
+EDGE_MARGIN = 10
+MIN_TRACK_IOU = 0.03
+MAX_FRAMES_LOST = 6
+MIN_VISIBLE_FRAMES = 0
+MIN_STABLE_FRAMES = 0
+BOX_PADDING = 0
+LEGACY_BINARY_THRESHOLD = 100
 LIVE_STATS_FILE = "live_stats.json"
+WORKER_RESULT_FILE = "worker_result.json"
+STREAM_PORT = int(os.getenv("STREAM_PORT", "5002"))
 
-# Dynamic video source (camera index or path)
-if len(sys.argv) > 1:
-    source = sys.argv[1]
-    # Try to convert to int if it's a digit (for webcam index)
-    VIDEO_PATH = int(source) if source.isdigit() else source
-else:
-    VIDEO_PATH = 0 # Default to webcam
+# Streaming Globals
+output_lock = threading.Lock()
+current_frame = None
+stream_client_event = threading.Event()
+app = Flask(__name__)
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/health')
+def health():
+    return ("ok", 200)
+
+def generate():
+    global current_frame
+    # Mark that a browser is actively consuming the MJPEG stream.
+    stream_client_event.set()
+    while True:
+        try:
+            with output_lock:
+                if current_frame is None:
+                    # Create a placeholder loading frame
+                    placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+                    frame_to_send = placeholder
+                else:
+                    frame_to_send = current_frame
+
+                flag, encoded_image = cv2.imencode(".jpg", frame_to_send)
+                if not flag:
+                    time.sleep(0.03)
+                    continue
+
+            yield (
+                b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' +
+                bytearray(encoded_image) +
+                b'\r\n'
+            )
+            time.sleep(0.1 if current_frame is None else 0.03)
+        except GeneratorExit:
+            break
+        except Exception:
+            # Keep stream handler alive even if one frame fails.
+            time.sleep(0.05)
+
+def run_flask():
+    print(f"Starting Flask MJPEG server on port {STREAM_PORT}...")
+    try:
+        # Local-only binding keeps the stream private and avoids firewall prompts.
+        app.run(host='127.0.0.1', port=STREAM_PORT, debug=False, threaded=True, use_reloader=False)
+    except Exception as e:
+        print(f"Flask stream server failed: {e}")
+
+
+def parse_worker_args():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("source", nargs="?", default="0")
+    parser.add_argument("--stream-port", type=int, default=STREAM_PORT)
+    parser.add_argument("--user-id", type=int, default=0)
+    args, _ = parser.parse_known_args()
+    return args
+
+
+_worker_args = parse_worker_args()
+STREAM_PORT = _worker_args.stream_port
+SESSION_USER_ID = _worker_args.user_id if _worker_args.user_id > 0 else None
+_source = str(_worker_args.source)
+# Convert webcam indexes like "0", "1", ...
+VIDEO_PATH = int(_source) if _source.isdigit() else _source
 
 class BeanTracker:
     def __init__(self, bean_id, centroid, box):
@@ -47,6 +129,8 @@ class BeanTracker:
         self.confidence = 0.0
         self.state = "WAITING_ENTRY"
         self.frames_lost = 0
+        self.frames_seen = 1
+        self.stable_frames = 0
         self.color = (100, 100, 100)
         self.timestamp = None
 
@@ -60,6 +144,65 @@ def preprocess_for_mobilenet(crop):
     except:
         return None
 
+def box_iou(box_a, box_b):
+    """Compute IoU for two bounding boxes in (x, y, w, h) format."""
+    ax, ay, aw, ah = box_a
+    bx, by, bw, bh = box_b
+
+    ax2, ay2 = ax + aw, ay + ah
+    bx2, by2 = bx + bw, by + bh
+
+    inter_x1 = max(ax, bx)
+    inter_y1 = max(ay, by)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+
+    inter_w = max(0, inter_x2 - inter_x1)
+    inter_h = max(0, inter_y2 - inter_y1)
+    inter_area = inter_w * inter_h
+    if inter_area == 0:
+        return 0.0
+
+    union_area = (aw * ah) + (bw * bh) - inter_area
+    if union_area <= 0:
+        return 0.0
+    return inter_area / union_area
+
+def extract_blob(cnt):
+    """Return (x, y, w, h) for valid contours using legacy area filtering."""
+    area = cv2.contourArea(cnt)
+    if area < MIN_AREA or area > MAX_AREA:
+        return None
+
+    x, y, w, h = cv2.boundingRect(cnt)
+    if w <= 0 or h <= 0:
+        return None
+
+    return x, y, w, h
+
+def classify_bean_once(classifier, img, box):
+    """Classify a bean crop exactly once and return (label, confidence, color)."""
+    h_img, w_img = img.shape[:2]
+    x, y, w, h = box
+
+    x1 = max(0, x - BOX_PADDING)
+    y1 = max(0, y - BOX_PADDING)
+    x2 = min(w_img, x + w + BOX_PADDING)
+    y2 = min(h_img, y + h + BOX_PADDING)
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    crop = img[y1:y2, x1:x2]
+    processed = preprocess_for_mobilenet(crop)
+    if processed is None:
+        return None
+
+    score = float(classifier.predict(processed, verbose=0)[0][0])
+    if score >= CLASSIFICATION_THRESHOLD:
+        return "Good", score, (0, 255, 0)
+    return "Bad", 1.0 - score, (0, 0, 255)
+
 def update_live_stats(good, bad, active, status="running"):
     """Write current stats to JSON file for web dashboard."""
     stats = {
@@ -70,8 +213,37 @@ def update_live_stats(good, bad, active, status="running"):
         "total": good + bad,
         "timestamp": datetime.datetime.now().isoformat()
     }
-    with open(LIVE_STATS_FILE, 'w') as f:
-        json.dump(stats, f)
+    tmp_file = f"{LIVE_STATS_FILE}.tmp"
+    for _ in range(4):
+        try:
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(stats, f)
+            os.replace(tmp_file, LIVE_STATS_FILE)
+            return
+        except PermissionError:
+            # Browser polling can briefly lock the file on Windows.
+            time.sleep(0.03)
+        except OSError:
+            time.sleep(0.03)
+    # Last-resort fallback to keep worker alive.
+    try:
+        with open(LIVE_STATS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(stats, f)
+    except OSError:
+        pass
+
+def write_worker_result(saved, reason, session_id=None):
+    payload = {
+        "saved": bool(saved),
+        "reason": reason,
+        "session_id": session_id,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+    try:
+        with open(WORKER_RESULT_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except OSError:
+        pass
 
 def generate_llm_report(session_data, start_time):
     if not GEMINI_API_KEY:
@@ -107,6 +279,7 @@ def generate_llm_report(session_data, start_time):
 
     IMPORTANT: Focus strictly on the coffee bean data and batch quality. 
     DO NOT suggest model enhancements, stricter thresholding, or any technical changes to the AI detection system itself.
+    DO NOT add any disclaimer or meta-comment about AI availability, API limits, or missing insights.
     Keep the report professional, technical, and under 250 words.
     """
 
@@ -119,7 +292,7 @@ def generate_llm_report(session_data, start_time):
     except Exception as e:
         print(f"Gemini Error (Quota or 404): {e}")
         # Return a structured, professional-looking local report as fallback
-        return f"""BATCH QUALITY REPORT (LOCAL ANALYSIS)
+        return f"""BATCH QUALITY REPORT
 
 1. Executive Summary
 A session of {duration:.1f} seconds was completed. A total of {total} beans were processed.
@@ -133,10 +306,9 @@ The average detection confidence for this batch was {avg_conf:.2%}.
 
 4. Operational Recommendation
 {"Batch quality is high. Proceed with standard processing." if bad_pct < 15 else "High defect rate detected. Manual inspection or recalibration recommended."}
+"""
 
-(Detailed AI insights currently unavailable)"""
-
-def save_session_to_db(session_data, start_time):
+def save_session_to_db(session_data, start_time, user_id):
     """Save session to database and update live stats."""
     # Ensure we don't save empty/crash sessions twice
     if not hasattr(save_session_to_db, "completed"):
@@ -148,9 +320,15 @@ def save_session_to_db(session_data, start_time):
     
     if len(session_data) == 0:
         print("No data to save.")
+        write_worker_result(saved=False, reason="no_beans")
+        return
+
+    if user_id is None:
+        print("No authenticated user id provided. Skipping DB save.")
+        write_worker_result(saved=False, reason="missing_user")
         return
     
-    print("\n\U0001F916 Generating professional AI report...")
+    print("\nGenerating professional AI report...")
     report_text = generate_llm_report(session_data, start_time)
     
     if report_text:
@@ -161,6 +339,7 @@ def save_session_to_db(session_data, start_time):
         
         # Save to database
         session_id = database.save_session(
+            user_id=user_id,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             total=len(session_data),
             good=good_count,
@@ -169,9 +348,13 @@ def save_session_to_db(session_data, start_time):
             duration=duration,
             report=report_text
         )
-        print(f"\u2705 Session saved to database (ID: {session_id})")
+        print(f"Session saved to database (ID: {session_id})")
+        write_worker_result(saved=True, reason="saved", session_id=session_id)
+    else:
+        write_worker_result(saved=False, reason="report_unavailable")
 
 def main():
+    global current_frame
     # Initialize database
     database.init_db()
     
@@ -182,10 +365,10 @@ def main():
     cap = None
 
     def handle_exit(sig, frame):
-        print(f"\n\u23f1 Shutdown signal ({sig}) received. Saving...")
+        print(f"\nShutdown signal ({sig}) received. Saving...")
         try:
             nonlocal session_data, start_time, cap
-            save_session_to_db(session_data, start_time)
+            save_session_to_db(session_data, start_time, SESSION_USER_ID)
             if cap: cap.release()
             cv2.destroyAllWindows()
         except:
@@ -196,6 +379,16 @@ def main():
     signal.signal(signal.SIGINT, handle_exit)
 
     try:
+        # Start streaming server IMMEDIATELY
+        t = threading.Thread(target=run_flask, daemon=True)
+        t.start()
+
+        if os.path.exists(WORKER_RESULT_FILE):
+            try:
+                os.remove(WORKER_RESULT_FILE)
+            except OSError:
+                pass
+
         print("Loading Classifier...")
         classifier = load_model(CLASSIFIER_MODEL_PATH, compile=False)
         
@@ -205,9 +398,16 @@ def main():
             print("Error: Could not open video source.")
             update_live_stats(0, 0, 0, "error")
             return
+        source_is_webcam = isinstance(VIDEO_PATH, int)
+        source_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        if source_fps <= 0 or source_fps > 240:
+            source_fps = 30.0
+        file_frame_interval = 1.0 / source_fps
+        next_file_frame_deadline = time.perf_counter()
+        file_read_failures = 0
 
-        cv2.namedWindow("Multi-Bean Tracking", cv2.WINDOW_NORMAL)
-        
+
         active_beans = []
         next_id = 1
         total_good = 0
@@ -220,74 +420,107 @@ def main():
 
         # Initial stats
         update_live_stats(0, 0, 0, "running")
+        current_frame = None
+
+        if not source_is_webcam:
+            # For uploaded videos, wait until the browser actually starts
+            # consuming /video_feed so detection and visualization start together.
+            stream_client_event.clear()
+            print("Waiting for stream client connection...")
+            stream_client_event.wait(timeout=12)
+            next_file_frame_deadline = time.perf_counter()
 
         while True:
             # Check for stop signal from Flask
             if os.path.exists('stop_worker.flag'):
-                print("\n⚠️ Graceful stop flag detected. Saving...")
-                save_session_to_db(session_data, start_time)
+                print("\nGraceful stop flag detected. Saving...")
+                save_session_to_db(session_data, start_time, SESSION_USER_ID)
                 break
 
             if not paused:
                 success, img = cap.read()
                 if not success:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    active_beans = []
-                    continue
+                    if source_is_webcam:
+                        # Webcam may drop frames occasionally; keep session alive.
+                        time.sleep(0.02)
+                        continue
+                    # For file mode, tolerate brief decode hiccups before ending session.
+                    file_read_failures += 1
+                    current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES) or 0)
+                    near_eof = source_frame_count > 0 and current_pos >= max(source_frame_count - 2, 1)
+                    if not near_eof and file_read_failures < 8:
+                        time.sleep(0.02)
+                        continue
+
+                    print(
+                        f"Video source ended (frame {current_pos}/{source_frame_count}). "
+                        "Saving session..."
+                    )
+                    save_session_to_db(session_data, start_time, SESSION_USER_ID)
+                    break
+                file_read_failures = 0
                 
                 h_orig, w_orig = img.shape[:2]
                 
                 roi = img 
                 y_start = 0
-                y_end = h_orig
                 
                 gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
                 blur = cv2.GaussianBlur(gray, (9, 9), 0)
-                _, thresh = cv2.threshold(blur, 100, 255, cv2.THRESH_BINARY_INV)
-                
-                kernel = np.ones((5,5), np.uint8)
+                _, thresh = cv2.threshold(
+                    blur, LEGACY_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY_INV
+                )
+                kernel = np.ones((5, 5), np.uint8)
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=5)
-                
-                cv2.imshow("Mask", thresh)
 
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
                 current_blobs = []
                 
                 for cnt in contours:
-                    area = cv2.contourArea(cnt)
-                    if MIN_AREA < area < MAX_AREA:
-                        x, y, w, h = cv2.boundingRect(cnt)
-                        detected_box = (x, y + y_start, w, h)
-                        cx = x + w // 2
-                        cy = y + y_start + h // 2
-                        current_blobs.append(( (cx, cy), detected_box ))
+                    extracted = extract_blob(cnt)
+                    if extracted is None:
+                        continue
+                    x, y, w, h = extracted
+                    detected_box = (x, y + y_start, w, h)
+                    cx = x + w // 2
+                    cy = y + y_start + h // 2
+                    current_blobs.append(((cx, cy), detected_box))
 
                 matched_blob_indices = set()
                 active_beans_to_keep = []
 
                 for bean in active_beans:
                     best_blob_idx = -1
-                    min_dist = float('inf')
+                    best_dist = float('inf')
+                    best_iou = 0.0
                     
                     for i, (blob_centroid, blob_box) in enumerate(current_blobs):
                         if i in matched_blob_indices: continue
                         
                         dist = np.linalg.norm(np.array(bean.centroid) - np.array(blob_centroid))
-                        if dist < min_dist:
-                            min_dist = dist
+                        iou_score = box_iou(bean.box, blob_box)
+                        if (iou_score > best_iou) or (iou_score == best_iou and dist < best_dist):
+                            best_iou = iou_score
+                            best_dist = dist
                             best_blob_idx = i
                     
-                    if best_blob_idx != -1 and min_dist < TRACKING_DISTANCE_THRESHOLD:
-                        bean.centroid = current_blobs[best_blob_idx][0]
-                        bean.box = current_blobs[best_blob_idx][1]
+                    if best_blob_idx != -1 and (
+                        best_dist < TRACKING_DISTANCE_THRESHOLD or best_iou >= MIN_TRACK_IOU
+                    ):
+                        new_centroid, new_box = current_blobs[best_blob_idx]
+                        stability_iou = box_iou(bean.box, new_box)
+                        bean.stable_frames = bean.stable_frames + 1 if stability_iou >= 0.45 else 0
+                        bean.frames_seen += 1
+                        bean.centroid = new_centroid
+                        bean.box = new_box
                         bean.frames_lost = 0
                         matched_blob_indices.add(best_blob_idx)
                         active_beans_to_keep.append(bean)
                     else:
                         bean.frames_lost += 1
-                        if bean.frames_lost <= 5:
+                        if bean.frames_lost <= MAX_FRAMES_LOST:
                             active_beans_to_keep.append(bean)
 
                 active_beans = active_beans_to_keep
@@ -295,7 +528,9 @@ def main():
                 for i, (blob_centroid, blob_box) in enumerate(current_blobs):
                     if i not in matched_blob_indices:
                         cx, cy = blob_centroid
-                        if cx < w_orig * 0.3:
+                        enters_from_left = cx < w_orig * ENTRY_REGION_RATIO
+                        enters_from_right = cx > w_orig * (1.0 - ENTRY_REGION_RATIO)
+                        if enters_from_left or enters_from_right:
                             new_bean = BeanTracker(next_id, blob_centroid, blob_box)
                             next_id += 1
                             active_beans.append(new_bean)
@@ -304,28 +539,20 @@ def main():
                     bx, by, bw, bh = bean.box
                     cx, cy = bean.centroid
                     
-                    touching_left = bx < 10
-                    touching_right = (bx + bw) > (w_orig - 10)
+                    touching_left = bx < EDGE_MARGIN
+                    touching_right = (bx + bw) > (w_orig - EDGE_MARGIN)
 
                     if bean.state == "WAITING_ENTRY":
-                        if not touching_left:
-                            bean.state = "TRACKING"
-                            
-                            crop = img[by:by+bh, bx:bx+bw]
-                            processed = preprocess_for_mobilenet(crop)
-                            if processed is not None:
-                                score = classifier.predict(processed, verbose=0)[0][0]
-                                if score > CLASSIFICATION_THRESHOLD:
-                                    bean.label = "Good"
-                                    bean.confidence = score
-                                    bean.color = (0, 255, 0)
+                        if bean.label == "Unknown" and not touching_left and not touching_right:
+                            classification = classify_bean_once(classifier, img, bean.box)
+                            if classification is not None:
+                                bean.label, bean.confidence, bean.color = classification
+                                bean.state = "TRACKING"
+                                if bean.label == "Good":
                                     total_good += 1
                                 else:
-                                    bean.label = "Bad"
-                                    bean.confidence = 1 - score
-                                    bean.color = (0, 0, 255)
                                     total_bad += 1
-                                
+
                                 timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                                 session_data.append({
                                     "id": bean.id,
@@ -341,32 +568,45 @@ def main():
                 if active_beans:
                     for bean in active_beans:
                         x, y, w, h = bean.box
+                        
+                        # VISUALIZATION UPDATE: Only Green or Red, Simple Label
                         cv2.rectangle(img, (x, y), (x+w, y+h), bean.color, 3)
                         
-                        status_text = f"ID:{bean.id} {bean.label}" 
-                        if bean.label != "Unknown":
-                            status_text += f" {bean.confidence:.2f}"
+                        # Simplified label: "Good" or "Bad"
+                        label_text = bean.label
+                        if bean.label == "Unknown":
+                            label_text = "Tracking..."
                         
-                        cv2.putText(img, status_text, (x, y-10), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, bean.color, 2)
+                        cv2.putText(img, label_text, (x, y-10), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, bean.color, 2)
 
-                cv2.putText(img, f"Good: {total_good}  Bad: {total_bad}", (20, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                cv2.putText(img, f"Active: {len(active_beans)}", (20, 90),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                # Overlay stats
+                cv2.putText(img, f"Good: {total_good}", (20, 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(img, f"Bad: {total_bad}", (20, 90),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
                 # Update live stats every 0.5s
                 if time.time() - last_stats_update > 0.5:
                     update_live_stats(total_good, total_bad, len(active_beans), "running")
                     last_stats_update = time.time()
                 
-                cv2.imshow("Multi-Bean Tracking", img)
+                # UPDATE GLOBAL FRAME FOR STREAMING
+                with output_lock:
+                    current_frame = img.copy()
+
+                if not source_is_webcam:
+                    next_file_frame_deadline += file_frame_interval
+                    sleep_time = next_file_frame_deadline - time.perf_counter()
+                    if sleep_time > 0:
+                        time.sleep(min(sleep_time, 0.2))
+                    else:
+                        # Catch up if processing lagged behind.
+                        next_file_frame_deadline = time.perf_counter()
             
-            key = cv2.waitKey(30) & 0xFF
-            if key == ord('q'): 
-                break
-            if key == ord(' '): 
-                paused = not paused
+            # Allow clean exit via file flag primarily, but keep small sleep
+            if source_is_webcam:
+                time.sleep(0.01)
 
     except Exception as e:
         import traceback
@@ -377,7 +617,6 @@ def main():
         update_live_stats(0, 0, 0, "error")
     finally:
         if cap: cap.release()
-        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

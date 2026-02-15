@@ -71,6 +71,14 @@ body {
     color: var(--accent);
 }
 
+.nav-user {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
 .container {
     max-width: 1200px;
     margin: 40px auto;
@@ -146,6 +154,103 @@ body {
     line-height: 1.5;
 }
 
+/* --- Auth Pages --- */
+.auth-shell {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+}
+
+.auth-card {
+    width: min(420px, 100%);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 26px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.auth-title {
+    font-size: 1.6rem;
+    margin-bottom: 8px;
+}
+
+.auth-subtitle {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 0.92rem;
+}
+
+.auth-field {
+    margin-bottom: 14px;
+}
+
+.auth-field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.auth-field input {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: #0f172a;
+    color: var(--text-primary);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 0.95rem;
+}
+
+.auth-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.18);
+}
+
+.auth-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.auth-alert {
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+}
+
+.auth-success {
+    border: 1px solid rgba(34, 197, 94, 0.5);
+    background: rgba(34, 197, 94, 0.12);
+    color: #86efac;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+}
+
+.auth-switch {
+    margin-top: 14px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.auth-switch a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+
 /* --- Detection Pages --- */
 .detection-grid {
     display: grid;
@@ -175,6 +280,7 @@ body {
 .image-container {
     flex: 1;
     background: #000;
+    border: 1px solid var(--border);
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -335,4 +441,241 @@ body {
 .toggle-btn.active {
     background: var(--accent);
     color: #000;
+}
+
+/* --- Value Colors --- */
+.stat-val.good {
+    color: var(--good);
+}
+
+.stat-val.bad {
+    color: var(--bad);
+}
+
+/* --- Image Page Layout --- */
+.image-page {
+    max-width: none;
+    width: min(1920px, 98vw);
+    margin: 20px auto;
+}
+
+.image-detect-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(340px, 0.9fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.image-detect-left {
+    display: grid;
+    grid-template-rows: repeat(2, minmax(360px, 1fr));
+    gap: 20px;
+}
+
+.image-detect-left .preview-box {
+    min-height: 360px;
+}
+
+.image-detect-left .image-container {
+    min-height: 280px;
+}
+
+.image-detect-left .image-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.image-detect-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: calc(var(--header-h) + 18px);
+}
+
+.side-panel {
+    min-height: auto;
+}
+
+.mini-note {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.5;
+}
+
+.panel-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.panel-actions .btn {
+    justify-content: center;
+}
+
+.stats-vertical {
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    margin: 0;
+    padding: 18px 20px;
+}
+
+.stats-tight {
+    padding: 14px 16px;
+}
+
+.compact-empty {
+    padding: 6px 0;
+}
+
+.compact-empty i {
+    font-size: 2rem;
+}
+
+/* --- Realtime Page Layout --- */
+.realtime-page {
+    max-width: none;
+    width: min(1920px, 98vw);
+    margin: 20px auto;
+}
+
+.realtime-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.85fr);
+    gap: 22px;
+    align-items: start;
+}
+
+.stream-box {
+    min-height: 740px;
+}
+
+.stream-box .image-container {
+    min-height: 640px;
+}
+
+.realtime-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: calc(var(--header-h) + 18px);
+}
+
+.upload-panel {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.rt-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.rt-controls .btn {
+    justify-content: center;
+}
+
+.stream-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.stream-overlay p {
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    text-align: center;
+}
+
+.stream-spinner {
+    width: 56px;
+    height: 56px;
+}
+
+/* --- Toasts --- */
+.toast-wrap {
+    position: fixed;
+    top: calc(var(--header-h) + 14px);
+    right: 16px;
+    width: min(340px, calc(100vw - 24px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 2300;
+    pointer-events: none;
+}
+
+.toast {
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text-primary);
+    font-size: 0.94rem;
+    font-weight: 600;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transform: translateX(24px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast.toast-success {
+    border-color: rgba(34, 197, 94, 0.6);
+    color: #86efac;
+}
+
+.toast.toast-error {
+    border-color: rgba(239, 68, 68, 0.7);
+    color: #fca5a5;
+}
+
+.toast.toast-info {
+    border-color: rgba(234, 179, 8, 0.7);
+    color: #fde047;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1100px) {
+    .image-detect-layout,
+    .realtime-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .image-detect-right,
+    .realtime-side {
+        position: static;
+    }
+
+    .stream-box {
+        min-height: 460px;
+    }
+
+    .stream-box .image-container {
+        min-height: 380px;
+    }
+}
+
+@media (max-width: 700px) {
+    .toast-wrap {
+        left: 12px;
+        right: 12px;
+        width: auto;
+    }
 }

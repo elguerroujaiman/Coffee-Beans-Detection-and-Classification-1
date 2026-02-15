@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BeanGuard AI | Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/login" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/signup"><i class="fas fa-user-plus"></i> Sign Up</a>
+        </div>
+    </nav>
+
+    <main class="auth-shell">
+        <section class="auth-card">
+            <h1 class="auth-title">Login</h1>
+            <p class="auth-subtitle">Access your quality-control workspace.</p>
+
+            {% if created %}
+            <div class="auth-success">Account created successfully. Please log in.</div>
+            {% endif %}
+
+            {% if error %}
+            <div class="auth-alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/login">
+                <input type="hidden" name="next" value="{{ next_path }}">
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <input id="username" name="username" type="text" required autocomplete="username">
+                </div>
+
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <input id="password" name="password" type="password" required autocomplete="current-password">
+                </div>
+
+                <label class="auth-check">
+                    <input type="checkbox" name="remember_me">
+                    Remember me for 10 days
+                </label>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-right-to-bracket"></i> Login
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                New here? <a href="/signup">Create an account</a>
+            </p>
+        </section>
+    </main>
+</body>
+
+</html>

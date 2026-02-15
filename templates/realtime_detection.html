@@ -20,65 +20,87 @@
             <a href="/image_detection"><i class="fas fa-image"></i> Image Test</a>
             <a href="/realtime_detection" class="active"><i class="fas fa-video"></i> Real-time</a>
             <a href="/history"><i class="fas fa-history"></i> History</a>
+            <span class="nav-user"><i class="fas fa-user"></i> {{ current_user.username }}</span>
+            <a href="/logout"><i class="fas fa-right-from-bracket"></i> Logout</a>
         </div>
     </nav>
 
-    <div class="container" style="max-width: 900px;">
-        <div class="stats-strip">
-            <div class="stat-item">
-                <span class="stat-val" id="live-good">0</span>
-                <span class="stat-label">Good</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-val" id="live-bad" style="color: var(--bad);">Defective</span>
-                <span class="stat-label">Bad</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-val" id="live-total">0</span>
-                <span class="stat-label">Total Session</span>
-            </div>
-            <div class="stat-item" style="margin-left: auto; border-left: 1px solid var(--border); padding-left: 40px;">
-                <span class="stat-val" id="status-text"
-                    style="color: var(--text-secondary); font-size: 1rem;">IDLE</span>
-                <span class="stat-label">System Status</span>
-            </div>
-        </div>
+    <div id="toast-wrap" class="toast-wrap"></div>
 
-        <div class="preview-box" style="min-height: 500px; justify-content: center; align-items: center;">
-            <div class="source-toggle">
-                <button id="mode-cam" class="toggle-btn active" onclick="setMode('cam')"><i class="fas fa-camera"></i>
-                    Webcam</button>
-                <button id="mode-vid" class="toggle-btn" onclick="setMode('vid')"><i class="fas fa-file-video"></i>
-                    Upload Video</button>
-            </div>
-
-            <div id="video-upload-area" style="display: none; margin-bottom: 20px; text-align: center;">
-                <label for="video-input" class="btn btn-outline" style="display: inline-flex;">
-                    <i class="fas fa-upload"></i> Choose Video File
-                </label>
-                <input type="file" id="video-input" accept="video/*" style="display: none;">
-                <p id="video-name" style="margin-top: 10px; color: var(--accent); font-size: 0.9rem;"></p>
-            </div>
-
-            <div class="image-container" id="monitor-area" style="width: 100%; border: 2px dashed var(--border);">
-                <div class="empty-state" id="placeholder">
-                    <i class="fas fa-display"></i>
-                    <p>Live feed will appear in a separate window</p>
-                    <small style="color: var(--text-secondary);">Using OpenCV native display for maximum
-                        performance</small>
+    <div class="container realtime-page">
+        <div class="realtime-layout">
+            <section class="realtime-video">
+                <div class="preview-box stream-box">
+                    <h2><i class="fas fa-video"></i> Live Stream</h2>
+                    <div class="image-container" id="monitor-area" style="width: 100%;">
+                        <div class="empty-state" id="placeholder">
+                            <i class="fas fa-display"></i>
+                            <p>Ready to Inspect</p>
+                            <small style="color: var(--text-secondary);">Stream will appear here</small>
+                        </div>
+                        <div id="stream-overlay" class="stream-overlay" style="display: none;">
+                            <div class="spinner stream-spinner"></div>
+                            <p id="stream-overlay-text">System Initializing...</p>
+                        </div>
+                        <img id="video-feed" src="" alt="Live Stream"
+                            style="width: 100%; height: auto; border-radius: 8px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                    </div>
                 </div>
-                <div class="spinner" id="active-spinner" style="display: none;"></div>
-            </div>
-        </div>
-    </div>
+            </section>
 
-    <div class="controls">
-        <button id="ctrl-btn" class="btn btn-primary">
-            <i class="fas fa-play"></i> Start Inspection
-        </button>
-        <button id="stop-btn" class="btn btn-danger" style="display: none;">
-            <i class="fas fa-stop"></i> Stop & Save
-        </button>
+            <aside class="realtime-side">
+                <div class="preview-box side-panel">
+                    <h2><i class="fas fa-sliders"></i> Detection Controls</h2>
+                    <div class="source-toggle">
+                        <button id="mode-cam" class="toggle-btn active" onclick="setMode('cam')">
+                            <i class="fas fa-camera"></i> Webcam
+                        </button>
+                        <button id="mode-vid" class="toggle-btn" onclick="setMode('vid')">
+                            <i class="fas fa-file-video"></i> Upload Video
+                        </button>
+                    </div>
+
+                    <div id="video-upload-area" class="upload-panel" style="display: none;">
+                        <label for="video-input" class="btn btn-outline" style="display: inline-flex;">
+                            <i class="fas fa-upload"></i> Choose Video File
+                        </label>
+                        <input type="file" id="video-input" accept="video/*" style="display: none;">
+                        <p id="video-name" style="margin-top: 10px; color: var(--accent); font-size: 0.9rem;"></p>
+                    </div>
+
+                    <div class="rt-controls">
+                        <button id="ctrl-btn" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Start Inspection
+                        </button>
+                        <button id="stop-btn" class="btn btn-danger" style="display: none;">
+                            <i class="fas fa-stop"></i> Stop & Save
+                        </button>
+                    </div>
+                </div>
+
+                <div class="preview-box side-panel">
+                    <h2><i class="fas fa-chart-line"></i> Live Stats</h2>
+                    <div class="stats-strip stats-vertical stats-tight">
+                        <div class="stat-item">
+                            <span class="stat-val good" id="live-good">0</span>
+                            <span class="stat-label">Good</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-val bad" id="live-bad">0</span>
+                            <span class="stat-label">Bad</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-val" id="live-total">0</span>
+                            <span class="stat-label">Total</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-val" id="status-text" style="font-size: 1rem;">IDLE</span>
+                            <span class="stat-label">System Status</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
     </div>
 
     <script>
@@ -86,6 +108,42 @@
         let isRunning = false;
         let pollInterval = null;
         let selectedVideoPath = null;
+        let currentStreamUrl = null;
+        let stopToastShown = false;
+        let reportToastTimer = null;
+        let finalizingSession = false;
+
+        const toastWrap = document.getElementById('toast-wrap');
+
+        function showToast(message, type = 'info', duration = 3000) {
+            if (!message) return;
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 220);
+            }, duration);
+        }
+
+        function runStopToasts() {
+            if (stopToastShown) return;
+            stopToastShown = true;
+            showToast("Detection ended", "info");
+            clearTimeout(reportToastTimer);
+            reportToastTimer = setTimeout(() => {
+                showToast("Generating report...", "info");
+            }, 350);
+        }
+
+        function clearStopToastState() {
+            stopToastShown = false;
+            clearTimeout(reportToastTimer);
+            reportToastTimer = null;
+        }
 
         function setMode(mode) {
             if (isRunning) return;
@@ -109,80 +167,196 @@
                 if (data.status === 'success') {
                     selectedVideoPath = data.video_path;
                     document.getElementById('video-name').innerText = "Ready: " + file.name;
+                } else {
+                    selectedVideoPath = null;
+                    document.getElementById('video-name').innerText = "Invalid video file";
+                    showToast(data.error || "Video upload failed", "error");
                 }
             } catch (e) {
-                alert("Upload failed");
+                selectedVideoPath = null;
+                showToast("Video upload failed", "error");
             }
         });
 
         const ctrlBtn = document.getElementById('ctrl-btn');
         const stopBtn = document.getElementById('stop-btn');
         const statusText = document.getElementById('status-text');
-        const spinner = document.getElementById('active-spinner');
         const placeholder = document.getElementById('placeholder');
+        const streamOverlay = document.getElementById('stream-overlay');
+        const streamOverlayText = document.getElementById('stream-overlay-text');
+        const videoFeed = document.getElementById('video-feed');
+        let streamRetryCount = 0;
+
+        videoFeed.addEventListener('load', () => {
+            streamOverlay.style.display = 'none';
+            streamRetryCount = 0;
+        });
+
+        videoFeed.addEventListener('error', async () => {
+            if (!isRunning) return;
+
+            // If backend already ended the session, treat this as normal end-of-video.
+            try {
+                const statsRes = await fetch('/live_stats');
+                const stats = await statsRes.json();
+                if (stats.status && stats.status !== 'running') {
+                    await handleWorkerEnd(stats.status);
+                    return;
+                }
+            } catch (e) { }
+
+            if (streamRetryCount < 3) {
+                streamRetryCount += 1;
+                streamOverlayText.innerText = "Reconnecting stream...";
+                streamOverlay.style.display = 'flex';
+                setTimeout(() => {
+                    if (currentStreamUrl) {
+                        videoFeed.src = currentStreamUrl + "?t=" + new Date().getTime();
+                    }
+                }, 400);
+                return;
+            }
+            streamOverlay.style.display = 'none';
+            videoFeed.style.display = 'none';
+            placeholder.style.display = 'block';
+            statusText.innerText = "STREAM ERROR";
+            statusText.style.color = "var(--bad)";
+            showToast("Stream connection lost", "error");
+        });
 
         ctrlBtn.addEventListener('click', async () => {
-            let source = currentMode === 'cam' ? '0' : selectedVideoPath;
+            let source = currentMode === 'cam' ? '1' : selectedVideoPath;
             if (currentMode === 'vid' && !selectedVideoPath) {
-                alert("Please select a video file first");
+                showToast("Please upload a video file first", "error");
                 return;
             }
 
             ctrlBtn.disabled = true;
             statusText.innerText = "STARTING...";
+            placeholder.style.display = 'none';
+            videoFeed.style.display = 'none';
+            streamOverlayText.innerText = "System Initializing...";
+            streamOverlay.style.display = 'flex';
 
-            const res = await fetch(`/start?source=${encodeURIComponent(source)}`);
-            const data = await res.json();
+            try {
+                const res = await fetch(`/start?source=${encodeURIComponent(source)}`);
+                const data = await res.json();
 
-            if (data.status === 'success') {
-                isRunning = true;
-                ctrlBtn.style.display = 'none';
-                stopBtn.style.display = 'flex';
-                spinner.style.display = 'block';
-                placeholder.style.display = 'none';
-                statusText.innerText = "RUNNING";
-                statusText.style.color = "var(--good)";
-                startPolling();
-            } else {
-                alert(data.message);
+                if (data.status === 'success') {
+                    clearStopToastState();
+                    isRunning = true;
+                    currentStreamUrl = data.stream_url || "http://127.0.0.1:5002/video_feed";
+                    ctrlBtn.style.display = 'none';
+                    stopBtn.style.display = 'flex';
+
+                    placeholder.style.display = 'none';
+                    videoFeed.src = currentStreamUrl + "?t=" + new Date().getTime();
+                    videoFeed.style.display = 'block';
+
+                    statusText.innerText = "RUNNING";
+                    statusText.style.color = "var(--good)";
+                    startPolling();
+                } else {
+                    showToast(data.message || "Failed to start detection", "error");
+                    ctrlBtn.disabled = false;
+                    statusText.innerText = "IDLE";
+                    streamOverlay.style.display = 'none';
+                    placeholder.style.display = 'block';
+                }
+            } catch (e) {
+                showToast("Failed to start detection", "error");
                 ctrlBtn.disabled = false;
                 statusText.innerText = "IDLE";
+                streamOverlay.style.display = 'none';
+                placeholder.style.display = 'block';
             }
         });
 
         stopBtn.addEventListener('click', async () => {
+            if (finalizingSession) return;
+            finalizingSession = true;
             stopBtn.disabled = true;
             statusText.innerText = "STOPPING...";
+            runStopToasts();
 
             try {
                 const res = await fetch('/stop');
                 const data = await res.json();
 
                 if (data.status === 'success' || data.message === "No detection running") {
-                    resetUI();
+                    if (data.saved === false) {
+                        showToast("No beans were detected, session was not saved", "info");
+                        resetUI("NO BEANS DETECTED", "var(--accent)");
+                    } else {
+                        showToast("Session saved successfully", "success");
+                        resetUI("SESSION SAVED", "var(--accent)");
+                    }
                 } else {
-                    alert("Stop failed: " + data.message);
+                    showToast("Stop failed: " + (data.message || "Unknown error"), "error");
                     stopBtn.disabled = false;
                     statusText.innerText = "RUNNING";
+                    statusText.style.color = "var(--good)";
+                    clearStopToastState();
                 }
             } catch (e) {
                 console.error("Stop Error:", e);
-                resetUI(); // Force reset on network error
+                showToast("Stop request failed", "error");
+                stopBtn.disabled = false;
+                statusText.innerText = "RUNNING";
+                statusText.style.color = "var(--good)";
+                clearStopToastState();
+            } finally {
+                finalizingSession = false;
             }
         });
 
-        function resetUI() {
+        function resetUI(statusLabel = "SESSION SAVED", statusColor = "var(--accent)") {
             isRunning = false;
             stopBtn.style.display = 'none';
             stopBtn.disabled = false;
             ctrlBtn.style.display = 'flex';
             ctrlBtn.disabled = false;
-            spinner.style.display = 'none';
+
+            // Reset Video Feed
+            videoFeed.style.display = 'none';
+            videoFeed.src = "";
+            currentStreamUrl = null;
+            streamOverlay.style.display = 'none';
+            streamOverlayText.innerText = "System Initializing...";
             placeholder.style.display = 'block';
-            statusText.innerText = "SESSION SAVED";
-            statusText.style.color = "var(--accent)";
+
+            statusText.innerText = statusLabel;
+            statusText.style.color = statusColor;
             clearInterval(pollInterval);
+            pollInterval = null;
         }
+
+        async function handleWorkerEnd(status) {
+            if (finalizingSession) return;
+            finalizingSession = true;
+            runStopToasts();
+
+            try {
+                const res = await fetch('/stop');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (data.saved === false) {
+                        showToast("No beans were detected, session was not saved", "info");
+                    } else {
+                        showToast("Session saved successfully", "success");
+                    }
+                } else {
+                    showToast(data.message || "Could not confirm session save", "error");
+                }
+            } catch (e) {
+                showToast("Could not confirm session save", "error");
+            } finally {
+                const endedByError = status === 'error';
+                resetUI(endedByError ? "ERROR" : "SESSION ENDED", endedByError ? "var(--bad)" : "var(--accent)");
+                finalizingSession = false;
+            }
+        }
+
 
         function startPolling() {
             pollInterval = setInterval(async () => {
@@ -192,6 +366,10 @@
                     document.getElementById('live-good').innerText = data.good_count || 0;
                     document.getElementById('live-bad').innerText = data.bad_count || 0;
                     document.getElementById('live-total').innerText = data.total || 0;
+
+                    if (isRunning && data.status && data.status !== 'running') {
+                        await handleWorkerEnd(data.status);
+                    }
                 } catch (e) { }
             }, 1000);
         }

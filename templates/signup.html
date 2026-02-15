@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BeanGuard AI | Sign Up</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/login" class="nav-logo">
+            <i class="fas fa-seedling"></i>
+            <span>BeanGuard AI</span>
+        </a>
+        <div class="nav-links">
+            <a href="/login"><i class="fas fa-right-to-bracket"></i> Login</a>
+        </div>
+    </nav>
+
+    <main class="auth-shell">
+        <section class="auth-card">
+            <h1 class="auth-title">Sign Up</h1>
+            <p class="auth-subtitle">Create your local account to use the app.</p>
+
+            {% if error %}
+            <div class="auth-alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/signup">
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <input id="username" name="username" type="text" required autocomplete="username">
+                </div>
+
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <input id="password" name="password" type="password" required autocomplete="new-password">
+                </div>
+
+                <div class="auth-field">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input id="confirm_password" name="confirm_password" type="password" required
+                        autocomplete="new-password">
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                Already have an account? <a href="/login">Log in</a>
+            </p>
+        </section>
+    </main>
+</body>
+
+</html>

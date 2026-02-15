@@ -20,65 +20,78 @@
             <a href="/image_detection" class="active"><i class="fas fa-image"></i> Image Test</a>
             <a href="/realtime_detection"><i class="fas fa-video"></i> Real-time</a>
             <a href="/history"><i class="fas fa-history"></i> History</a>
+            <span class="nav-user"><i class="fas fa-user"></i> {{ current_user.username }}</span>
+            <a href="/logout"><i class="fas fa-right-from-bracket"></i> Logout</a>
         </div>
     </nav>
 
-    <div class="container">
-        <div class="info-tip">
-            <i class="fas fa-lightbulb"></i>
-            <strong>Pro Tip:</strong> For best results, ensure beans are spread out (not touching) on a <strong>plain
-                white background</strong> with clear lighting.
-        </div>
+    <div id="toast-wrap" class="toast-wrap"></div>
 
-        <div class="stats-strip" id="results-strip" style="display: none;">
-            <div class="stat-item">
-                <span class="stat-val" id="good-count">0</span>
-                <span class="stat-label">Good Beans</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-val" id="bad-count">0</span>
-                <span class="stat-label" style="color: var(--bad);">Defective</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-val" id="total-count">0</span>
-                <span class="stat-label">Total Found</span>
-            </div>
-        </div>
+    <div class="container image-page">
+        <div class="image-detect-layout">
+            <div class="image-detect-left">
+                <div class="preview-box">
+                    <h2><i class="fas fa-camera"></i> Original Image</h2>
+                    <div class="image-container" id="orig-container">
+                        <div class="empty-state">
+                            <i class="fas fa-upload"></i>
+                            <p>No image uploaded</p>
+                        </div>
+                    </div>
+                </div>
 
-        <div class="detection-grid">
-            <!-- Original Image -->
-            <div class="preview-box">
-                <h2><i class="fas fa-camera"></i> Original Image</h2>
-                <div class="image-container" id="orig-container">
-                    <div class="empty-state">
-                        <i class="fas fa-upload"></i>
-                        <p>No image uploaded</p>
+                <div class="preview-box">
+                    <h2><i class="fas fa-microscope"></i> AI Output</h2>
+                    <div class="image-container" id="detect-container">
+                        <div class="empty-state">
+                            <i class="fas fa-wand-magic-sparkles"></i>
+                            <p>Waiting for detection...</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Detected Result -->
-            <div class="preview-box">
-                <h2><i class="fas fa-microscope"></i> AI Analysis</h2>
-                <div class="image-container" id="detect-container">
-                    <div class="empty-state">
-                        <i class="fas fa-wand-magic-sparkles"></i>
-                        <p>Waiting for detection...</p>
+            <aside class="image-detect-right">
+                <div class="preview-box side-panel">
+                    <h2><i class="fas fa-sliders"></i> Controls</h2>
+                    <p class="mini-note">
+                        Best results: spread beans on a plain white background with clear lighting.
+                    </p>
+                    <div class="panel-actions">
+                        <label for="image-upload" class="btn btn-outline">
+                            <i class="fas fa-folder-open"></i> Select Image
+                        </label>
+                        <input type="file" id="image-upload" accept="image/*" style="display: none;">
+
+                        <button id="start-btn" class="btn btn-primary" disabled>
+                            <i class="fas fa-play"></i> Run Detection
+                        </button>
                     </div>
                 </div>
-            </div>
+
+                <div class="preview-box side-panel">
+                    <h2><i class="fas fa-chart-column"></i> Results</h2>
+                    <div class="stats-strip stats-vertical" id="results-strip" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-val good" id="good-count">0</span>
+                            <span class="stat-label">Good</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-val bad" id="bad-count">0</span>
+                            <span class="stat-label">Bad</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-val" id="total-count">0</span>
+                            <span class="stat-label">Total</span>
+                        </div>
+                    </div>
+                    <div class="empty-state compact-empty" id="results-empty">
+                        <i class="fas fa-list-check"></i>
+                        <p>Run detection to show counts</p>
+                    </div>
+                </div>
+            </aside>
         </div>
-    </div>
-
-    <div class="controls">
-        <label for="image-upload" class="btn btn-outline">
-            <i class="fas fa-folder-open"></i> Select Image
-        </label>
-        <input type="file" id="image-upload" accept="image/*" style="display: none;">
-
-        <button id="start-btn" class="btn btn-primary" disabled>
-            <i class="fas fa-play"></i> Run Detection
-        </button>
     </div>
 
     <script>
@@ -87,6 +100,22 @@
         const origContainer = document.getElementById('orig-container');
         const detectContainer = document.getElementById('detect-container');
         const statsStrip = document.getElementById('results-strip');
+        const resultsEmpty = document.getElementById('results-empty');
+        const toastWrap = document.getElementById('toast-wrap');
+
+        function showToast(message, type = 'info', duration = 3000) {
+            if (!message) return;
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toastWrap.appendChild(toast);
+
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 220);
+            }, duration);
+        }
 
         uploadInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -101,6 +130,7 @@
                         </div>`;
                     startBtn.disabled = false;
                     statsStrip.style.display = 'none';
+                    resultsEmpty.style.display = 'block';
                 };
                 reader.readAsDataURL(file);
             }
@@ -108,7 +138,10 @@
 
         startBtn.addEventListener('click', async () => {
             const file = uploadInput.files[0];
-            if (!file) return;
+            if (!file) {
+                showToast("Please select an image first", "error");
+                return;
+            }
 
             // UI State: Checking
             startBtn.disabled = true;
@@ -131,11 +164,12 @@
                     document.getElementById('bad-count').innerText = data.bad_count;
                     document.getElementById('total-count').innerText = data.total;
                     statsStrip.style.display = 'flex';
+                    resultsEmpty.style.display = 'none';
                 } else {
-                    alert('Error: ' + (data.error || 'Detection failed'));
+                    showToast(data.error || "Image detection failed", "error");
                 }
             } catch (err) {
-                alert('Connection error: ' + err.message);
+                showToast("Image upload/detection failed", "error");
             } finally {
                 startBtn.disabled = false;
             }
