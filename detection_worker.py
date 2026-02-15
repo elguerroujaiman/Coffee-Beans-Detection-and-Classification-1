@@ -45,9 +45,24 @@ ENTRY_REGION_RATIO = 0.30
 EDGE_MARGIN = 10
 MIN_TRACK_IOU = 0.03
 MAX_FRAMES_LOST = 6
-MIN_VISIBLE_FRAMES = int(os.getenv("MIN_VISIBLE_FRAMES", "2"))
-MIN_STABLE_FRAMES = int(os.getenv("MIN_STABLE_FRAMES", "2"))
+MIN_VISIBLE_FRAMES = int(os.getenv("MIN_VISIBLE_FRAMES", "1"))
+MIN_STABLE_FRAMES = int(os.getenv("MIN_STABLE_FRAMES", "1"))
+FORCE_CLASSIFY_FRAMES = int(os.getenv("FORCE_CLASSIFY_FRAMES", "6"))
+STABLE_IOU_THRESHOLD = float(os.getenv("STABLE_IOU_THRESHOLD", "0.30"))
 BOX_PADDING = 0
+MIN_TRACK_BOX_AREA = int(os.getenv("MIN_TRACK_BOX_AREA", "5000"))
+MIN_CLASSIFY_BOX_AREA = int(os.getenv("MIN_CLASSIFY_BOX_AREA", "9000"))
+MIN_TRACK_BROWN_RATIO = float(os.getenv("MIN_TRACK_BROWN_RATIO", "0.12"))
+MIN_BROWN_RATIO = float(os.getenv("MIN_BROWN_RATIO", "0.20"))
+VERTICAL_EDGE_MARGIN = int(os.getenv("VERTICAL_EDGE_MARGIN", "4"))
+MORPH_OPEN_ITERS = int(os.getenv("MORPH_OPEN_ITERS", "3"))
+MORPH_CLOSE_ITERS = int(os.getenv("MORPH_CLOSE_ITERS", "1"))
+ALLOW_LATE_SPAWN = str(os.getenv("ALLOW_LATE_SPAWN", "1")).strip().lower() in {"1", "true", "yes", "on"}
+LATE_SPAWN_MAX_X_RATIO = float(os.getenv("LATE_SPAWN_MAX_X_RATIO", "0.85"))
+SPAWN_SUPPRESS_DISTANCE = float(os.getenv("SPAWN_SUPPRESS_DISTANCE", "135"))
+DUPLICATE_IOU_THRESHOLD = float(os.getenv("DUPLICATE_IOU_THRESHOLD", "0.55"))
+CLASSIFY_CENTER_MIN_X_RATIO = float(os.getenv("CLASSIFY_CENTER_MIN_X_RATIO", "0.16"))
+CLASSIFY_CENTER_MAX_X_RATIO = float(os.getenv("CLASSIFY_CENTER_MAX_X_RATIO", "0.90"))
 LIVE_STATS_FILE = "live_stats.json"
 WORKER_RESULT_FILE = "worker_result.json"
 STREAM_PORT = int(os.getenv("STREAM_PORT", "5002"))
@@ -182,6 +197,52 @@ def overlaps(a, b):
     bx, by, bw, bh = b
     return not (ax + aw < bx or bx + bw < ax or ay + ah < by or by + bh < ay)
 
+def touches_vertical_edge(box, frame_h, margin=VERTICAL_EDGE_MARGIN):
+    _, y, _, h = box
+    return y <= margin or (y + h) >= (frame_h - margin)
+
+def bean_color_ratio(crop):
+    """Estimate how much of a crop has bean-like (brown/dark) color."""
+    if crop is None or crop.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    brown_mask = (h >= 5) & (h <= 35) & (s >= 35) & (v >= 20) & (v <= 235)
+    dark_mask = (v < 120) & (s >= 12)
+    bean_mask = brown_mask | dark_mask
+    return float(np.count_nonzero(bean_mask)) / float(bean_mask.size)
+
+def candidate_quality_check(
+    img,
+    box,
+    frame_h,
+    require_vertical_clear=True,
+    min_area=MIN_CLASSIFY_BOX_AREA,
+    min_brown_ratio=MIN_BROWN_RATIO,
+):
+    x, y, w, h = box
+    box_area = w * h
+    if box_area < min_area:
+        return False, "small_box", 0.0
+    if require_vertical_clear and touches_vertical_edge(box, frame_h):
+        return False, "touch_top_bottom", 0.0
+    crop = img[y:y + h, x:x + w]
+    ratio = bean_color_ratio(crop)
+    if ratio < min_brown_ratio:
+        return False, "low_brown_ratio", ratio
+    return True, "ok", ratio
+
+def should_suppress_new_track(active_beans, blob_centroid, blob_box):
+    """Avoid spawning duplicate tracks when matching briefly fails."""
+    for bean in active_beans:
+        if bean.frames_lost > 0:
+            continue
+        dist = np.linalg.norm(np.array(bean.centroid) - np.array(blob_centroid))
+        iou_score = box_iou(bean.box, blob_box)
+        if dist < SPAWN_SUPPRESS_DISTANCE or iou_score >= 0.08:
+            return True
+    return False
+
 def extract_blob(cnt):
     """Return (x, y, w, h) for bean-like contours."""
     area = cv2.contourArea(cnt)
@@ -271,7 +332,15 @@ def build_debug_visualization(frame, thresh, current_blobs, active_beans, mask_f
     )
     return board
 
-def classify_bean_once(classifier, img, box, bean_id=None, frame_idx=None, debug_dir=None):
+def classify_bean_once(
+    classifier,
+    img,
+    box,
+    bean_id=None,
+    frame_idx=None,
+    debug_dir=None,
+    precomputed_brown_ratio=None,
+):
     """Classify a bean crop exactly once and return (label, confidence, color)."""
     h_img, w_img = img.shape[:2]
     x, y, w, h = box
@@ -287,6 +356,12 @@ def classify_bean_once(classifier, img, box, bean_id=None, frame_idx=None, debug
     crop = img[y1:y2, x1:x2]
     if crop.size == 0:
         return None
+
+    brown_ratio = (
+        float(precomputed_brown_ratio)
+        if precomputed_brown_ratio is not None
+        else bean_color_ratio(crop)
+    )
 
     try:
         resized = cv2.resize(crop, (224, 224))
@@ -321,7 +396,9 @@ def classify_bean_once(classifier, img, box, bean_id=None, frame_idx=None, debug
                         "bean_id": bean_id,
                         "frame_idx": frame_idx,
                         "box": [int(x), int(y), int(w), int(h)],
+                        "box_area": int(w * h),
                         "threshold": float(CLASSIFICATION_THRESHOLD),
+                        "brown_ratio": float(brown_ratio),
                         "raw_score_good": float(score),
                         "predicted_label": label,
                         "confidence": float(confidence),
@@ -623,8 +700,8 @@ def main():
                         7
                     )
                 kernel = np.ones((5, 5), np.uint8)
-                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=3)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=MORPH_OPEN_ITERS)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=MORPH_CLOSE_ITERS)
 
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
@@ -637,7 +714,7 @@ def main():
                         continue
                     x, y, w, h = extracted
                     current_box = (x, y, w, h)
-                    if any(overlaps(current_box, ub) for ub in used_boxes):
+                    if any(box_iou(current_box, ub) >= DUPLICATE_IOU_THRESHOLD for ub in used_boxes):
                         continue
                     used_boxes.append(current_box)
 
@@ -669,7 +746,9 @@ def main():
                     ):
                         new_centroid, new_box = current_blobs[best_blob_idx]
                         stability_iou = box_iou(bean.box, new_box)
-                        bean.stable_frames = bean.stable_frames + 1 if stability_iou >= 0.45 else 0
+                        bean.stable_frames = (
+                            bean.stable_frames + 1 if stability_iou >= STABLE_IOU_THRESHOLD else 0
+                        )
                         bean.frames_seen += 1
                         bean.centroid = new_centroid
                         bean.box = new_box
@@ -688,10 +767,24 @@ def main():
                         cx, cy = blob_centroid
                         enters_from_left = cx < w_orig * ENTRY_REGION_RATIO
                         enters_from_right = cx > w_orig * (1.0 - ENTRY_REGION_RATIO)
-                        if enters_from_left or enters_from_right:
-                            new_bean = BeanTracker(next_id, blob_centroid, blob_box)
-                            next_id += 1
-                            active_beans.append(new_bean)
+                        late_spawn_allowed = ALLOW_LATE_SPAWN and cx < (w_orig * LATE_SPAWN_MAX_X_RATIO)
+                        if not (enters_from_left or enters_from_right or late_spawn_allowed):
+                            continue
+                        candidate_ok, _, _ = candidate_quality_check(
+                            img,
+                            blob_box,
+                            h_orig,
+                            require_vertical_clear=False,
+                            min_area=MIN_TRACK_BOX_AREA,
+                            min_brown_ratio=MIN_TRACK_BROWN_RATIO,
+                        )
+                        if not candidate_ok:
+                            continue
+                        if should_suppress_new_track(active_beans, blob_centroid, blob_box):
+                            continue
+                        new_bean = BeanTracker(next_id, blob_centroid, blob_box)
+                        next_id += 1
+                        active_beans.append(new_bean)
 
                 for bean in active_beans:
                     bx, by, bw, bh = bean.box
@@ -699,16 +792,27 @@ def main():
                     
                     touching_left = bx < EDGE_MARGIN
                     touching_right = (bx + bw) > (w_orig - EDGE_MARGIN)
+                    cx_ratio = cx / float(max(w_orig, 1))
+                    horizontal_ready = (
+                        CLASSIFY_CENTER_MIN_X_RATIO <= cx_ratio <= CLASSIFY_CENTER_MAX_X_RATIO
+                    )
 
                     if bean.state == "WAITING_ENTRY":
                         stable_for_classification = (
                             bean.frames_seen >= MIN_VISIBLE_FRAMES and
-                            bean.stable_frames >= MIN_STABLE_FRAMES
+                            (
+                                bean.stable_frames >= MIN_STABLE_FRAMES or
+                                bean.frames_seen >= FORCE_CLASSIFY_FRAMES or
+                                horizontal_ready
+                            )
+                        )
+                        candidate_ok, _, brown_ratio = candidate_quality_check(
+                            img, bean.box, h_orig, require_vertical_clear=False
                         )
                         if (
                             bean.label == "Unknown" and
-                            not touching_left and
-                            not touching_right and
+                            horizontal_ready and
+                            candidate_ok and
                             stable_for_classification
                         ):
                             classification = classify_bean_once(
@@ -718,6 +822,7 @@ def main():
                                 bean_id=bean.id,
                                 frame_idx=frame_idx,
                                 debug_dir=classifier_debug_dir if save_classifier_crops else None,
+                                precomputed_brown_ratio=brown_ratio,
                             )
                             if classification is not None:
                                 bean.label, bean.confidence, bean.color = classification
