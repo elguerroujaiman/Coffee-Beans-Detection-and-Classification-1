@@ -30,7 +30,6 @@ TAB_BOOT_SECONDS = 20
 WORKER_RESULT_FILE = "worker_result.json"
 UPLOAD_RUNTIME_DIR = Path("uploads/runtime")
 
-# Global variables
 detection_process = None
 inference_process = None
 active_stream_port = None
@@ -43,7 +42,6 @@ def _hash_token(token):
 def _is_safe_next_path(path_value):
     if not path_value:
         return False
-    # Allow only app-local paths.
     return path_value.startswith("/") and not path_value.startswith("//")
 
 
@@ -59,7 +57,6 @@ def _is_api_request_path(path):
 
 
 def _set_logged_in_user(user):
-    # Default login session is browser-session only unless remember token is used.
     session.permanent = False
     session["user_id"] = user["id"]
     session["username"] = user["username"]
@@ -114,7 +111,7 @@ def _delete_runtime_upload(path_value):
         pass
 
 
-def _stop_payload_from_worker_result(default_message):
+def _stop_payload_from_worker_result():
     result = _read_worker_result()
     if not result:
         return {
@@ -151,7 +148,6 @@ def start_inference_server():
             [sys.executable, "inference_server.py"],
             cwd=os.getcwd(),
         )
-        # Give it a few seconds to load the model
         time.sleep(2)
 
 
@@ -272,7 +268,6 @@ def login():
                     httponly=True,
                     samesite="Lax",
                 )
-                # Non-sensitive UI hint so frontend can distinguish remembered sessions.
                 response.set_cookie(
                     REMEMBER_HINT_COOKIE_NAME,
                     "1",
@@ -282,8 +277,6 @@ def login():
                 )
                 response.delete_cookie(TAB_BOOT_COOKIE_NAME)
             else:
-                # Short-lived bootstrap cookie lets the current tab initialize
-                # once, then future reopened tabs require login again.
                 response.set_cookie(
                     TAB_BOOT_COOKIE_NAME,
                     "1",
@@ -378,12 +371,11 @@ def start_detection():
     """Start the real-time detection worker."""
     global detection_process, active_stream_port
 
-    source = request.args.get("source", "1")  # default webcam index 1
+    source = request.args.get("source", "1")
 
     if detection_process and detection_process.poll() is None:
         return jsonify({"status": "error", "message": "Detection already running"})
 
-    # Webcam check: this app uses external webcam on index 1.
     if source.isdigit():
         if int(source) != 1:
             return jsonify({
@@ -451,7 +443,7 @@ def stop_detection():
             os.remove("stop_worker.flag")
         detection_process = None
         active_stream_port = None
-        return jsonify(_stop_payload_from_worker_result("Already stopped"))
+        return jsonify(_stop_payload_from_worker_result())
 
     with open("stop_worker.flag", "w", encoding="utf-8") as f:
         f.write("stop")
@@ -466,7 +458,7 @@ def stop_detection():
         os.remove("stop_worker.flag")
     detection_process = None
     active_stream_port = None
-    return jsonify(_stop_payload_from_worker_result("Detection stopped"))
+    return jsonify(_stop_payload_from_worker_result())
 
 
 @app.route("/live_stats")
@@ -565,7 +557,6 @@ def upload_video():
     video_path = video_dir / safe_name
     file.save(str(video_path))
 
-    # Validate the uploaded file is decodable before allowing detection.
     cap = cv2.VideoCapture(str(video_path))
     is_open = cap.isOpened()
     has_first_frame = False

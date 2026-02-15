@@ -13,7 +13,6 @@ import threading
 from flask import Flask, Response
 import logging
 
-# Mute Flask startup
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
@@ -21,19 +20,14 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import database
 
-# --- Windows Environment Fix ---
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# --- Configuration ---
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# DON'T configure Gemini here - only when generating report (saves API calls)
-
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
 CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.60"))
-# Detection settings
 MIN_AREA = 500
 MAX_AREA = 500000
 MIN_ASPECT_RATIO = 0.35
@@ -67,7 +61,6 @@ LIVE_STATS_FILE = "live_stats.json"
 WORKER_RESULT_FILE = "worker_result.json"
 STREAM_PORT = int(os.getenv("STREAM_PORT", "5002"))
 
-# Streaming Globals
 output_lock = threading.Lock()
 current_frame = None
 stream_client_event = threading.Event()
@@ -83,13 +76,11 @@ def health():
 
 def generate():
     global current_frame
-    # Mark that a browser is actively consuming the MJPEG stream.
     stream_client_event.set()
     while True:
         try:
             with output_lock:
                 if current_frame is None:
-                    # Create a placeholder loading frame
                     placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
                     frame_to_send = placeholder
                 else:
@@ -110,13 +101,11 @@ def generate():
         except GeneratorExit:
             break
         except Exception:
-            # Keep stream handler alive even if one frame fails.
             time.sleep(0.05)
 
 def run_flask():
     print(f"Starting Flask MJPEG server on port {STREAM_PORT}...")
     try:
-        # Local-only binding keeps the stream private and avoids firewall prompts.
         app.run(host='127.0.0.1', port=STREAM_PORT, debug=False, threaded=True, use_reloader=False)
     except Exception as e:
         print(f"Flask stream server failed: {e}")
@@ -137,7 +126,6 @@ STREAM_PORT = _worker_args.stream_port
 SESSION_USER_ID = _worker_args.user_id if _worker_args.user_id > 0 else None
 DELETE_SOURCE_ON_EXIT = bool(_worker_args.delete_source_on_exit)
 _source = str(_worker_args.source)
-# Convert webcam indexes like "0", "1", ...
 VIDEO_PATH = int(_source) if _source.isdigit() else _source
 
 class BeanTracker:
@@ -153,16 +141,6 @@ class BeanTracker:
         self.stable_frames = 0
         self.color = (100, 100, 100)
         self.timestamp = None
-
-def preprocess_for_mobilenet(crop):
-    try:
-        img_resized = cv2.resize(crop, (224, 224))
-        img_array = tf.keras.preprocessing.image.img_to_array(img_resized)
-        img_array = tf.expand_dims(img_array, 0)
-        img_array = (img_array / 127.5) - 1.0
-        return img_array
-    except:
-        return None
 
 def box_iou(box_a, box_b):
     """Compute IoU for two bounding boxes in (x, y, w, h) format."""
@@ -187,11 +165,6 @@ def box_iou(box_a, box_b):
     if union_area <= 0:
         return 0.0
     return inter_area / union_area
-
-def overlaps(a, b):
-    ax, ay, aw, ah = a
-    bx, by, bw, bh = b
-    return not (ax + aw < bx or bx + bw < ax or ay + ah < by or by + bh < ay)
 
 def touches_vertical_edge(box, frame_h, margin=VERTICAL_EDGE_MARGIN):
     _, y, _, h = box
@@ -326,7 +299,6 @@ def update_live_stats(good, bad, active, status="running"):
             time.sleep(0.03)
         except OSError:
             time.sleep(0.03)
-    # Last-resort fallback to keep worker alive.
     try:
         with open(LIVE_STATS_FILE, 'w', encoding='utf-8') as f:
             json.dump(stats, f)
@@ -385,14 +357,12 @@ def generate_llm_report(session_data, start_time):
     """
 
     try:
-        # Configure Gemini ONLY when generating report
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('models/gemini-2.5-flash')
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         print(f"Gemini Error (Quota or 404): {e}")
-        # Return a structured, professional-looking local report as fallback
         return f"""BATCH QUALITY REPORT
 
 1. Executive Summary
@@ -411,7 +381,6 @@ The average detection confidence for this batch was {avg_conf:.2%}.
 
 def save_session_to_db(session_data, start_time, user_id):
     """Save session to database and update live stats."""
-    # Ensure we don't save empty/crash sessions twice
     if not hasattr(save_session_to_db, "completed"):
         save_session_to_db.completed = True
     else:
@@ -438,7 +407,6 @@ def save_session_to_db(session_data, start_time, user_id):
         bad_count = sum(1 for b in session_data if b['label'] == 'Bad')
         avg_conf = np.mean([b['confidence'] for b in session_data])
         
-        # Save to database
         session_id = database.save_session(
             user_id=user_id,
             timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -456,10 +424,8 @@ def save_session_to_db(session_data, start_time, user_id):
 
 def main():
     global current_frame
-    # Initialize database
     database.init_db()
-    
-    # Session state
+
     session_data = []
     start_time = time.time()
     last_stats_update = time.time()
@@ -479,7 +445,6 @@ def main():
     signal.signal(signal.SIGINT, handle_exit)
 
     try:
-        # Start streaming server IMMEDIATELY
         t = threading.Thread(target=run_flask, daemon=True)
         t.start()
 
@@ -514,25 +479,22 @@ def main():
         total_good = 0
         total_bad = 0
         paused = False
-        
-        # Cleanup old flags
+
         if os.path.exists('stop_worker.flag'):
             os.remove('stop_worker.flag')
 
-        # Initial stats
         update_live_stats(0, 0, 0, "running")
         current_frame = None
 
         if not source_is_webcam:
-            # For uploaded videos, wait until the browser actually starts
-            # consuming /video_feed so detection and visualization start together.
+            # Wait for the browser to start consuming /video_feed so
+            # processing and visualization start together.
             stream_client_event.clear()
             print("Waiting for stream client connection...")
             stream_client_event.wait(timeout=12)
             next_file_frame_deadline = time.perf_counter()
 
         while True:
-            # Check for stop signal from Flask
             if os.path.exists('stop_worker.flag'):
                 print("\nGraceful stop flag detected. Saving...")
                 save_session_to_db(session_data, start_time, SESSION_USER_ID)
@@ -542,10 +504,9 @@ def main():
                 success, img = cap.read()
                 if not success:
                     if source_is_webcam:
-                        # Webcam may drop frames occasionally; keep session alive.
                         time.sleep(0.02)
                         continue
-                    # For file mode, tolerate brief decode hiccups before ending session.
+                    # Tolerate brief decode hiccups before ending file sessions.
                     file_read_failures += 1
                     current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES) or 0)
                     near_eof = source_frame_count > 0 and current_pos >= max(source_frame_count - 2, 1)
@@ -720,11 +681,9 @@ def main():
                 if active_beans:
                     for bean in active_beans:
                         x, y, w, h = bean.box
-                        
-                        # VISUALIZATION UPDATE: Only Green or Red, Simple Label
+
                         cv2.rectangle(img, (x, y), (x+w, y+h), bean.color, 3)
-                        
-                        # Simplified label: "Good" or "Bad"
+
                         label_text = bean.label
                         if bean.label == "Unknown":
                             label_text = "Tracking..."
@@ -732,18 +691,15 @@ def main():
                         cv2.putText(img, label_text, (x, y-10), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, bean.color, 2)
 
-                # Overlay stats
                 cv2.putText(img, f"Good: {total_good}", (20, 50),
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 cv2.putText(img, f"Bad: {total_bad}", (20, 90),
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                
-                # Update live stats every 0.5s
+
                 if time.time() - last_stats_update > 0.5:
                     update_live_stats(total_good, total_bad, len(active_beans), "running")
                     last_stats_update = time.time()
-                
-                # UPDATE GLOBAL FRAME FOR STREAMING
+
                 with output_lock:
                     current_frame = img.copy()
 
@@ -753,10 +709,8 @@ def main():
                     if sleep_time > 0:
                         time.sleep(min(sleep_time, 0.2))
                     else:
-                        # Catch up if processing lagged behind.
                         next_file_frame_deadline = time.perf_counter()
-            
-            # Allow clean exit via file flag primarily, but keep small sleep
+
             if source_is_webcam:
                 time.sleep(0.01)
 

@@ -51,7 +51,10 @@
 
             <aside class="realtime-side">
                 <div class="preview-box side-panel">
-                    <h2><i class="fas fa-sliders"></i> Detection Controls</h2>
+                    <h2><i class="fas fa-sliders"></i> Controls</h2>
+                    <p class="mini-note">
+                        Best results: use a plain white background, strong even lighting, and preferably a moving conveyor belt.
+                    </p>
                     <div class="source-toggle">
                         <button id="mode-cam" class="toggle-btn active" onclick="setMode('cam')">
                             <i class="fas fa-camera"></i> Webcam
@@ -95,7 +98,7 @@
                             <span class="stat-label">Total</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-val" id="status-text" style="font-size: 1rem;">IDLE</span>
+                            <span class="stat-val" id="status-text" style="font-size: 1rem;">READY TO START</span>
                             <span class="stat-label">System Status</span>
                         </div>
                     </div>
@@ -228,7 +231,6 @@
         videoFeed.addEventListener('error', async () => {
             if (!isRunning) return;
 
-            // If backend already ended the session, treat this as normal end-of-video.
             try {
                 const statsRes = await fetch('/live_stats');
                 const stats = await statsRes.json();
@@ -293,14 +295,14 @@
                 } else {
                     showToast(data.message || "Failed to start detection", "error");
                     ctrlBtn.disabled = false;
-                    statusText.innerText = "IDLE";
+                    statusText.innerText = "READY TO START";
                     streamOverlay.style.display = 'none';
                     placeholder.style.display = 'block';
                 }
             } catch (e) {
                 showToast("Failed to start detection", "error");
                 ctrlBtn.disabled = false;
-                statusText.innerText = "IDLE";
+                statusText.innerText = "READY TO START";
                 streamOverlay.style.display = 'none';
                 placeholder.style.display = 'block';
             }
@@ -346,7 +348,6 @@
             ctrlBtn.style.display = 'flex';
             ctrlBtn.disabled = false;
 
-            // Reset Video Feed
             videoFeed.style.display = 'none';
             videoFeed.src = "";
             currentStreamUrl = null;
@@ -407,6 +408,4 @@
 </body>
 
 </html>
-
-
 

@@ -14,12 +14,10 @@
         document.cookie = name + "=; Max-Age=0; Path=/; SameSite=Lax";
     }
 
-    // Persistent login path (remember me checked): allow across tabs/restarts.
     if (hasCookie(REMEMBER_HINT_COOKIE)) {
         try {
             sessionStorage.setItem(TAB_MARKER_KEY, "1");
         } catch (e) {
-            // Ignore storage errors; auth remains controlled by backend cookies.
         }
         return;
     }
@@ -35,17 +33,14 @@
         return;
     }
 
-    // Fresh non-remember login in this tab only.
     if (hasCookie(TAB_BOOT_COOKIE)) {
         try {
             sessionStorage.setItem(TAB_MARKER_KEY, "1");
         } catch (e) {
-            // No-op; backend still enforces auth.
         }
         deleteCookie(TAB_BOOT_COOKIE);
         return;
     }
 
-    // New tab/open without remember-me should require login again.
     window.location.replace("/logout");
 })();

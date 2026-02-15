@@ -3,10 +3,8 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import os
-import json
 import base64
 
-# --- Configuration ---
 app = Flask(__name__)
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
 CLASSIFICATION_THRESHOLD = float(os.getenv("CLASSIFICATION_THRESHOLD", "0.60"))
@@ -69,7 +67,6 @@ def predict():
     if not image_path or not os.path.exists(image_path):
         return jsonify({"error": "Invalid image path"}), 400
 
-    # 1. Read Image
     img = cv2.imread(image_path)
     if img is None:
         return jsonify({"error": "Failed to read image"}), 400
@@ -77,8 +74,7 @@ def predict():
     output = img.copy()
     good = 0
     bad = 0
-    
-    # 2. Detection Logic
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (9, 9), 0)
     _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -114,7 +110,6 @@ def predict():
         if bean_crop.size == 0:
             continue
 
-        # Classify
         img_resized = cv2.resize(bean_crop, (224, 224))
         img_array = tf.keras.preprocessing.image.img_to_array(img_resized)
         img_array = tf.expand_dims(img_array, 0)
@@ -125,11 +120,9 @@ def predict():
         if pred.shape[-1] == 1:
             score = float(pred[0][0])
             label = "Good" if score >= CLASSIFICATION_THRESHOLD else "Bad"
-            conf = score if label == "Good" else 1 - score
         else:
             cls = int(np.argmax(pred))
             label = "Good" if cls == 1 else "Bad"
-            conf = float(pred[0][cls])
 
         color = (0, 255, 0) if label == "Good" else (0, 0, 255)
         if label == "Good": good += 1
@@ -139,7 +132,6 @@ def predict():
         cv2.putText(output, label, (x, max(y - 10, 20)),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-    # 3. Encode result
     _, detect_encoded = cv2.imencode('.jpg', output)
     detect_b64 = base64.b64encode(detect_encoded).decode('utf-8')
 
