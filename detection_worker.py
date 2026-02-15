@@ -127,6 +127,7 @@ def parse_worker_args():
     parser.add_argument("source", nargs="?", default="0")
     parser.add_argument("--stream-port", type=int, default=STREAM_PORT)
     parser.add_argument("--user-id", type=int, default=0)
+    parser.add_argument("--delete-source-on-exit", type=int, default=0)
     args, _ = parser.parse_known_args()
     return args
 
@@ -134,6 +135,7 @@ def parse_worker_args():
 _worker_args = parse_worker_args()
 STREAM_PORT = _worker_args.stream_port
 SESSION_USER_ID = _worker_args.user_id if _worker_args.user_id > 0 else None
+DELETE_SOURCE_ON_EXIT = bool(_worker_args.delete_source_on_exit)
 _source = str(_worker_args.source)
 # Convert webcam indexes like "0", "1", ...
 VIDEO_PATH = int(_source) if _source.isdigit() else _source
@@ -768,6 +770,12 @@ def main():
     finally:
         if cap:
             cap.release()
+        if DELETE_SOURCE_ON_EXIT and isinstance(VIDEO_PATH, str):
+            try:
+                if os.path.isfile(VIDEO_PATH):
+                    os.remove(VIDEO_PATH)
+            except OSError:
+                pass
 
 if __name__ == "__main__":
     main()

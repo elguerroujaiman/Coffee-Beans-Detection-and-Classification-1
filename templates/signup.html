@@ -29,21 +29,28 @@
             <div class="auth-alert">{{ error }}</div>
             {% endif %}
 
-            <form method="POST" action="/signup">
+            <form id="signup-form" method="POST" action="/signup" autocomplete="off">
+                <input type="hidden" name="username" id="signup-username-hidden">
+                <input type="hidden" name="password" id="signup-password-hidden">
+                <input type="hidden" name="confirm_password" id="signup-confirm-hidden">
                 <div class="auth-field">
-                    <label for="username">Username</label>
-                    <input id="username" name="username" type="text" required autocomplete="username">
+                    <label for="signup-username-ui">Username</label>
+                    <input id="signup-username-ui" name="signup_username_ui" type="text" required autocomplete="off"
+                        autocapitalize="off" autocorrect="off" spellcheck="false" readonly>
                 </div>
 
                 <div class="auth-field">
-                    <label for="password">Password</label>
-                    <input id="password" name="password" type="password" required autocomplete="new-password">
+                    <label for="signup-password-ui">Password</label>
+                    <input id="signup-password-ui" name="signup_password_ui" type="password" required
+                        autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
+                        readonly>
                 </div>
 
                 <div class="auth-field">
-                    <label for="confirm_password">Confirm Password</label>
-                    <input id="confirm_password" name="confirm_password" type="password" required
-                        autocomplete="new-password">
+                    <label for="signup-confirm-ui">Confirm Password</label>
+                    <input id="signup-confirm-ui" name="signup_confirm_ui" type="password" required
+                        autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
+                        readonly>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
@@ -56,6 +63,35 @@
             </p>
         </section>
     </main>
+    <script>
+        (function () {
+            const form = document.getElementById('signup-form');
+            const userUi = document.getElementById('signup-username-ui');
+            const passUi = document.getElementById('signup-password-ui');
+            const confirmUi = document.getElementById('signup-confirm-ui');
+            const userHidden = document.getElementById('signup-username-hidden');
+            const passHidden = document.getElementById('signup-password-hidden');
+            const confirmHidden = document.getElementById('signup-confirm-hidden');
+
+            function unlock(el) {
+                if (el) el.removeAttribute('readonly');
+            }
+
+            [userUi, passUi, confirmUi].forEach((el) => {
+                if (!el) return;
+                el.addEventListener('focus', () => unlock(el), { once: true });
+                el.addEventListener('pointerdown', () => unlock(el), { once: true });
+            });
+
+            if (form) {
+                form.addEventListener('submit', () => {
+                    userHidden.value = (userUi.value || '').trim();
+                    passHidden.value = passUi.value || '';
+                    confirmHidden.value = confirmUi.value || '';
+                });
+            }
+        })();
+    </script>
 </body>
 
 </html>

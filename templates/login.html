@@ -33,16 +33,21 @@
             <div class="auth-alert">{{ error }}</div>
             {% endif %}
 
-            <form method="POST" action="/login">
+            <form id="login-form" method="POST" action="/login" autocomplete="off">
                 <input type="hidden" name="next" value="{{ next_path }}">
+                <input type="hidden" name="username" id="login-username-hidden">
+                <input type="hidden" name="password" id="login-password-hidden">
                 <div class="auth-field">
-                    <label for="username">Username</label>
-                    <input id="username" name="username" type="text" required autocomplete="username">
+                    <label for="login-username-ui">Username</label>
+                    <input id="login-username-ui" name="login_username_ui" type="text" required autocomplete="off"
+                        autocapitalize="off" autocorrect="off" spellcheck="false" readonly>
                 </div>
 
                 <div class="auth-field">
-                    <label for="password">Password</label>
-                    <input id="password" name="password" type="password" required autocomplete="current-password">
+                    <label for="login-password-ui">Password</label>
+                    <input id="login-password-ui" name="login_password_ui" type="password" required
+                        autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
+                        readonly>
                 </div>
 
                 <label class="auth-check">
@@ -60,6 +65,32 @@
             </p>
         </section>
     </main>
+    <script>
+        (function () {
+            const form = document.getElementById('login-form');
+            const userUi = document.getElementById('login-username-ui');
+            const passUi = document.getElementById('login-password-ui');
+            const userHidden = document.getElementById('login-username-hidden');
+            const passHidden = document.getElementById('login-password-hidden');
+
+            function unlock(el) {
+                if (el) el.removeAttribute('readonly');
+            }
+
+            [userUi, passUi].forEach((el) => {
+                if (!el) return;
+                el.addEventListener('focus', () => unlock(el), { once: true });
+                el.addEventListener('pointerdown', () => unlock(el), { once: true });
+            });
+
+            if (form) {
+                form.addEventListener('submit', () => {
+                    userHidden.value = (userUi.value || '').trim();
+                    passHidden.value = passUi.value || '';
+                });
+            }
+        })();
+    </script>
 </body>
 
 </html>

@@ -13,6 +13,7 @@ import base64
 import time
 import socket
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -27,6 +28,7 @@ REMEMBER_DAYS = 10
 TAB_BOOT_COOKIE_NAME = "bean_guard_tab_boot"
 TAB_BOOT_SECONDS = 20
 WORKER_RESULT_FILE = "worker_result.json"
+UPLOAD_RUNTIME_DIR = Path("uploads/runtime")
 
 # Global variables
 detection_process = None
@@ -90,6 +92,26 @@ def _read_worker_result():
         return data if isinstance(data, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _is_runtime_upload_path(path_value):
+    if not path_value:
+        return False
+    try:
+        file_path = Path(path_value).resolve()
+        runtime_root = UPLOAD_RUNTIME_DIR.resolve()
+        return runtime_root in file_path.parents
+    except Exception:
+        return False
+
+
+def _delete_runtime_upload(path_value):
+    if not _is_runtime_upload_path(path_value):
+        return
+    try:
+        Path(path_value).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _stop_payload_from_worker_result(default_message):
@@ -380,23 +402,25 @@ def start_detection():
     if active_stream_port is None:
         return jsonify({"status": "error", "message": "No free stream port found"}), 500
 
-    detection_process = subprocess.Popen(
-        [
-            sys.executable,
-            "detection_worker.py",
-            source,
-            "--stream-port",
-            str(active_stream_port),
-            "--user-id",
-            str(g.user["id"]),
-        ],
-        cwd=os.getcwd(),
-    )
+    worker_cmd = [
+        sys.executable,
+        "detection_worker.py",
+        source,
+        "--stream-port",
+        str(active_stream_port),
+        "--user-id",
+        str(g.user["id"]),
+    ]
+    if _is_runtime_upload_path(source):
+        worker_cmd.extend(["--delete-source-on-exit", "1"])
+
+    detection_process = subprocess.Popen(worker_cmd, cwd=os.getcwd())
 
     ready, err = wait_for_stream_ready(active_stream_port)
     if not ready:
         if detection_process and detection_process.poll() is None:
             detection_process.terminate()
+        _delete_runtime_upload(source)
         detection_process = None
         active_stream_port = None
         return jsonify({"status": "error", "message": err}), 500
@@ -534,9 +558,11 @@ def upload_video():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    video_dir = Path("uploads/videos")
+    video_dir = UPLOAD_RUNTIME_DIR
     video_dir.mkdir(parents=True, exist_ok=True)
-    video_path = video_dir / file.filename
+    suffix = Path(file.filename).suffix.strip() or ".mp4"
+    safe_name = f"upload_{int(time.time() * 1000)}_{uuid4().hex[:8]}{suffix}"
+    video_path = video_dir / safe_name
     file.save(str(video_path))
 
     # Validate the uploaded file is decodable before allowing detection.
@@ -566,7 +592,7 @@ def upload_video():
 
     return jsonify({
         "status": "success",
-        "video_path": str(video_path.absolute()),
+        "video_path": str(video_path.resolve()),
         "duration_sec": duration_sec,
     })
 
