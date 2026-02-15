@@ -72,7 +72,7 @@
 
                 <div class="preview-box side-panel">
                     <h2><i class="fas fa-chart-column"></i> Results</h2>
-                    <div class="stats-strip stats-vertical" id="results-strip" style="display: none;">
+                    <div class="stats-strip stats-vertical stats-tight" id="results-strip">
                         <div class="stat-item">
                             <span class="stat-val good" id="good-count">0</span>
                             <span class="stat-label">Good</span>
@@ -86,10 +86,6 @@
                             <span class="stat-label">Total</span>
                         </div>
                     </div>
-                    <div class="empty-state compact-empty" id="results-empty">
-                        <i class="fas fa-list-check"></i>
-                        <p>Run detection to show counts</p>
-                    </div>
                 </div>
             </aside>
         </div>
@@ -100,8 +96,6 @@
         const startBtn = document.getElementById('start-btn');
         const origContainer = document.getElementById('orig-container');
         const detectContainer = document.getElementById('detect-container');
-        const statsStrip = document.getElementById('results-strip');
-        const resultsEmpty = document.getElementById('results-empty');
         const toastWrap = document.getElementById('toast-wrap');
 
         function showToast(message, type = 'info', duration = 3000) {
@@ -130,8 +124,9 @@
                             <p>Ready to analyze</p>
                         </div>`;
                     startBtn.disabled = false;
-                    statsStrip.style.display = 'none';
-                    resultsEmpty.style.display = 'block';
+                    document.getElementById('good-count').innerText = 0;
+                    document.getElementById('bad-count').innerText = 0;
+                    document.getElementById('total-count').innerText = 0;
                 };
                 reader.readAsDataURL(file);
             }
@@ -164,8 +159,6 @@
                     document.getElementById('good-count').innerText = data.good_count;
                     document.getElementById('bad-count').innerText = data.bad_count;
                     document.getElementById('total-count').innerText = data.total;
-                    statsStrip.style.display = 'flex';
-                    resultsEmpty.style.display = 'none';
                 } else {
                     showToast(data.error || "Image detection failed", "error");
                 }

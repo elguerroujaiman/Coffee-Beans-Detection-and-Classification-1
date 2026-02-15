@@ -611,11 +611,11 @@ body {
 }
 
 .stream-box {
-    min-height: 740px;
+    min-height: 0;
 }
 
 .stream-box .image-container {
-    min-height: 640px;
+    min-height: 0;
 }
 
 .realtime-side {

@@ -165,6 +165,7 @@
             document.getElementById('mode-cam').classList.toggle('active', mode === 'cam');
             document.getElementById('mode-vid').classList.toggle('active', mode === 'vid');
             document.getElementById('video-upload-area').style.display = mode === 'vid' ? 'block' : 'none';
+            setTimeout(syncStreamPanelHeight, 0);
         }
 
         document.getElementById('video-input').addEventListener('change', async (e) => {
@@ -186,9 +187,11 @@
                     document.getElementById('video-name').innerText = "Invalid video file";
                     showToast(data.error || "Video upload failed", "error");
                 }
+                setTimeout(syncStreamPanelHeight, 0);
             } catch (e) {
                 selectedVideoPath = null;
                 showToast("Video upload failed", "error");
+                setTimeout(syncStreamPanelHeight, 0);
             }
         });
 
@@ -199,7 +202,23 @@
         const streamOverlay = document.getElementById('stream-overlay');
         const streamOverlayText = document.getElementById('stream-overlay-text');
         const videoFeed = document.getElementById('video-feed');
+        const realtimeSide = document.querySelector('.realtime-side');
+        const streamBox = document.querySelector('.stream-box');
         let streamRetryCount = 0;
+
+        function syncStreamPanelHeight() {
+            if (!realtimeSide || !streamBox) return;
+
+            if (window.innerWidth <= 1100) {
+                streamBox.style.height = '';
+                return;
+            }
+
+            const targetHeight = realtimeSide.offsetHeight;
+            if (targetHeight > 0) {
+                streamBox.style.height = `${targetHeight}px`;
+            }
+        }
 
         videoFeed.addEventListener('load', () => {
             streamOverlay.style.display = 'none';
@@ -269,6 +288,7 @@
 
                     statusText.innerText = "RUNNING";
                     statusText.style.color = "var(--good)";
+                    setTimeout(syncStreamPanelHeight, 0);
                     startPolling();
                 } else {
                     showToast(data.message || "Failed to start detection", "error");
@@ -338,6 +358,7 @@
             statusText.style.color = statusColor;
             clearInterval(pollInterval);
             pollInterval = null;
+            setTimeout(syncStreamPanelHeight, 0);
         }
 
         async function handleWorkerEnd(status) {
@@ -378,6 +399,10 @@
                 } catch (e) { }
             }, 1000);
         }
+
+        window.addEventListener('load', syncStreamPanelHeight);
+        window.addEventListener('resize', syncStreamPanelHeight);
+        syncStreamPanelHeight();
     </script>
 </body>
 
