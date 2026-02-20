@@ -378,6 +378,8 @@ The average detection confidence for this batch was {avg_conf:.2%}.
 4. Operational Recommendation
 {"Batch quality is high. Proceed with standard processing." if bad_pct < 15 else "High defect rate detected. Manual inspection or recalibration recommended."}
 """
+    
+
 
 def save_session_to_db(session_data, start_time, user_id):
     """Save session to database and update live stats."""
