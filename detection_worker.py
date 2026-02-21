@@ -485,7 +485,7 @@ def main():
         if os.path.exists('stop_worker.flag'):
             os.remove('stop_worker.flag')
 
-        update_live_stats(0, 0, 0, "running")
+        update_live_stats(0, 0, 0, "starting")
         current_frame = None
 
         if not source_is_webcam:
@@ -493,8 +493,16 @@ def main():
             # processing and visualization start together.
             stream_client_event.clear()
             print("Waiting for stream client connection...")
-            stream_client_event.wait(timeout=12)
+            wait_deadline = time.time() + 12.0
+            while time.time() < wait_deadline and not stream_client_event.is_set():
+                if os.path.exists('stop_worker.flag'):
+                    print("Stop requested during stream initialization. Saving...")
+                    save_session_to_db(session_data, start_time, SESSION_USER_ID)
+                    return
+                time.sleep(0.1)
             next_file_frame_deadline = time.perf_counter()
+
+        update_live_stats(0, 0, 0, "running")
 
         while True:
             if os.path.exists('stop_worker.flag'):

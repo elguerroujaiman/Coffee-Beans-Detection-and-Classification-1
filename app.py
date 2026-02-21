@@ -29,6 +29,7 @@ TAB_BOOT_COOKIE_NAME = "bean_guard_tab_boot"
 TAB_BOOT_SECONDS = 20
 WORKER_RESULT_FILE = "worker_result.json"
 UPLOAD_RUNTIME_DIR = Path("uploads/runtime")
+LIVE_STATS_FILE = "live_stats.json"
 
 detection_process = None
 inference_process = None
@@ -89,6 +90,28 @@ def _read_worker_result():
         return data if isinstance(data, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _write_live_stats(status="starting", good=0, bad=0, active=0):
+    payload = {
+        "status": status,
+        "good_count": int(good),
+        "bad_count": int(bad),
+        "active_beans": int(active),
+        "total": int(good) + int(bad),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    tmp_file = f"{LIVE_STATS_FILE}.tmp"
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        os.replace(tmp_file, LIVE_STATS_FILE)
+    except OSError:
+        try:
+            with open(LIVE_STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+        except OSError:
+            pass
 
 
 def _is_runtime_upload_path(path_value):
@@ -389,6 +412,7 @@ def start_detection():
             }), 400
 
     _clear_worker_result()
+    _write_live_stats(status="starting")
 
     active_stream_port = find_available_stream_port()
     if active_stream_port is None:
@@ -465,10 +489,20 @@ def stop_detection():
 def live_stats():
     """Return live stats for AJAX polling."""
     try:
-        if os.path.exists("live_stats.json"):
-            with open("live_stats.json", "r", encoding="utf-8") as f:
+        if os.path.exists(LIVE_STATS_FILE):
+            with open(LIVE_STATS_FILE, "r", encoding="utf-8") as f:
                 stats = json.load(f)
             return jsonify(stats)
+
+        if detection_process is not None and detection_process.poll() is None:
+            return jsonify({
+                "status": "starting",
+                "good_count": 0,
+                "bad_count": 0,
+                "active_beans": 0,
+                "total": 0,
+            })
+
         return jsonify({"status": "stopped", "good_count": 0, "bad_count": 0, "total": 0})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

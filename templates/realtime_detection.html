@@ -394,8 +394,10 @@
                     document.getElementById('live-bad').innerText = data.bad_count || 0;
                     document.getElementById('live-total').innerText = data.total || 0;
 
-                    if (isRunning && data.status && data.status !== 'running') {
-                        await handleWorkerEnd(data.status);
+                    const status = String(data.status || '').toLowerCase();
+                    const ended = status === 'stopped' || status === 'error';
+                    if (isRunning && ended) {
+                        await handleWorkerEnd(status);
                     }
                 } catch (e) { }
             }, 1000);
