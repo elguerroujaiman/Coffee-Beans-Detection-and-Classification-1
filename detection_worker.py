@@ -55,6 +55,10 @@ ALLOW_LATE_SPAWN = str(os.getenv("ALLOW_LATE_SPAWN", "1")).strip().lower() in {"
 LATE_SPAWN_MAX_X_RATIO = float(os.getenv("LATE_SPAWN_MAX_X_RATIO", "0.85"))
 SPAWN_SUPPRESS_DISTANCE = float(os.getenv("SPAWN_SUPPRESS_DISTANCE", "135"))
 DUPLICATE_IOU_THRESHOLD = float(os.getenv("DUPLICATE_IOU_THRESHOLD", "0.55"))
+NEW_TRACK_SUPPRESS_IOU = float(os.getenv("NEW_TRACK_SUPPRESS_IOU", "0.18"))
+EDGE_ENTRY_MIN_AREA_FACTOR = float(os.getenv("EDGE_ENTRY_MIN_AREA_FACTOR", "0.75"))
+DUPLICATE_CENTER_DIST_RATIO = float(os.getenv("DUPLICATE_CENTER_DIST_RATIO", "0.30"))
+NEW_TRACK_SUPPRESS_CENTER_DIST_RATIO = float(os.getenv("NEW_TRACK_SUPPRESS_CENTER_DIST_RATIO", "0.35"))
 CLASSIFY_CENTER_MIN_X_RATIO = float(os.getenv("CLASSIFY_CENTER_MIN_X_RATIO", "0.16"))
 CLASSIFY_CENTER_MAX_X_RATIO = float(os.getenv("CLASSIFY_CENTER_MAX_X_RATIO", "0.90"))
 LIVE_STATS_FILE = "live_stats.json"
@@ -166,6 +170,23 @@ def box_iou(box_a, box_b):
         return 0.0
     return inter_area / union_area
 
+def box_center(box):
+    x, y, w, h = box
+    return (x + (w / 2.0), y + (h / 2.0))
+
+def box_center_distance(box_a, box_b):
+    ax, ay = box_center(box_a)
+    bx, by = box_center(box_b)
+    return float(np.hypot(ax - bx, ay - by))
+
+def are_boxes_near_duplicate(box_a, box_b):
+    iou_score = box_iou(box_a, box_b)
+    if iou_score < DUPLICATE_IOU_THRESHOLD:
+        return False
+    min_dim = max(1.0, min(box_a[2], box_a[3], box_b[2], box_b[3]))
+    max_center_distance = max(10.0, DUPLICATE_CENTER_DIST_RATIO * min_dim)
+    return box_center_distance(box_a, box_b) <= max_center_distance
+
 def touches_vertical_edge(box, frame_h, margin=VERTICAL_EDGE_MARGIN):
     _, y, _, h = box
     return y <= margin or (y + h) >= (frame_h - margin)
@@ -201,15 +222,17 @@ def candidate_quality_check(
         return False, "low_brown_ratio", ratio
     return True, "ok", ratio
 
-def should_suppress_new_track(active_beans, blob_centroid, blob_box):
-    """Avoid spawning duplicate tracks when matching briefly fails."""
-    for bean in active_beans:
+def should_suppress_new_track(reference_beans, blob_box):
+    """Suppress only true duplicate spawns by overlap plus close centers."""
+    for bean in reference_beans:
         if bean.frames_lost > 0:
             continue
-        dist = np.linalg.norm(np.array(bean.centroid) - np.array(blob_centroid))
         iou_score = box_iou(bean.box, blob_box)
-        if dist < SPAWN_SUPPRESS_DISTANCE or iou_score >= 0.08:
-            return True
+        if iou_score >= NEW_TRACK_SUPPRESS_IOU:
+            min_dim = max(1.0, min(bean.box[2], bean.box[3], blob_box[2], blob_box[3]))
+            max_center_distance = max(12.0, NEW_TRACK_SUPPRESS_CENTER_DIST_RATIO * min_dim)
+            if box_center_distance(bean.box, blob_box) <= max_center_distance:
+                return True
     return False
 
 def extract_blob(cnt):
@@ -562,7 +585,7 @@ def main():
                         continue
                     x, y, w, h = extracted
                     current_box = (x, y, w, h)
-                    if any(box_iou(current_box, ub) >= DUPLICATE_IOU_THRESHOLD for ub in used_boxes):
+                    if any(are_boxes_near_duplicate(current_box, ub) for ub in used_boxes):
                         continue
                     used_boxes.append(current_box)
 
@@ -610,6 +633,10 @@ def main():
 
                 active_beans = active_beans_to_keep
 
+                # Use only pre-existing matched tracks for suppression so
+                # multiple close beans can spawn in the same frame.
+                suppression_reference_beans = [b for b in active_beans if b.frames_lost == 0]
+
                 for i, (blob_centroid, blob_box) in enumerate(current_blobs):
                     if i not in matched_blob_indices:
                         cx, cy = blob_centroid
@@ -618,17 +645,20 @@ def main():
                         late_spawn_allowed = ALLOW_LATE_SPAWN and cx < (w_orig * LATE_SPAWN_MAX_X_RATIO)
                         if not (enters_from_left or enters_from_right or late_spawn_allowed):
                             continue
+                        spawn_min_area = MIN_TRACK_BOX_AREA
+                        if enters_from_left or enters_from_right:
+                            spawn_min_area = max(800, int(MIN_TRACK_BOX_AREA * EDGE_ENTRY_MIN_AREA_FACTOR))
                         candidate_ok, _, _ = candidate_quality_check(
                             img,
                             blob_box,
                             h_orig,
                             require_vertical_clear=False,
-                            min_area=MIN_TRACK_BOX_AREA,
+                            min_area=spawn_min_area,
                             min_brown_ratio=MIN_TRACK_BROWN_RATIO,
                         )
                         if not candidate_ok:
                             continue
-                        if should_suppress_new_track(active_beans, blob_centroid, blob_box):
+                        if should_suppress_new_track(suppression_reference_beans, blob_box):
                             continue
                         new_bean = BeanTracker(next_id, blob_centroid, blob_box)
                         next_id += 1
