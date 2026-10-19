@@ -34,6 +34,7 @@
             {% endif %}
 
             <form id="login-form" method="POST" action="/login" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="next" value="{{ next_path }}">
                 <input type="hidden" name="username" id="login-username-hidden">
                 <input type="hidden" name="password" id="login-password-hidden">

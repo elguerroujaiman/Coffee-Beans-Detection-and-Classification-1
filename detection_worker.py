@@ -1,4 +1,4 @@
-import cv2
+﻿import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
@@ -53,7 +53,6 @@ MORPH_OPEN_ITERS = int(os.getenv("MORPH_OPEN_ITERS", "3"))
 MORPH_CLOSE_ITERS = int(os.getenv("MORPH_CLOSE_ITERS", "1"))
 ALLOW_LATE_SPAWN = str(os.getenv("ALLOW_LATE_SPAWN", "1")).strip().lower() in {"1", "true", "yes", "on"}
 LATE_SPAWN_MAX_X_RATIO = float(os.getenv("LATE_SPAWN_MAX_X_RATIO", "0.85"))
-SPAWN_SUPPRESS_DISTANCE = float(os.getenv("SPAWN_SUPPRESS_DISTANCE", "135"))
 DUPLICATE_IOU_THRESHOLD = float(os.getenv("DUPLICATE_IOU_THRESHOLD", "0.55"))
 NEW_TRACK_SUPPRESS_IOU = float(os.getenv("NEW_TRACK_SUPPRESS_IOU", "0.18"))
 EDGE_ENTRY_MIN_AREA_FACTOR = float(os.getenv("EDGE_ENTRY_MIN_AREA_FACTOR", "0.75"))
@@ -110,7 +109,7 @@ def generate():
 def run_flask():
     print(f"Starting Flask MJPEG server on port {STREAM_PORT}...")
     try:
-        app.run(host='127.0.0.1', port=STREAM_PORT, debug=False, threaded=True, use_reloader=False)
+        app.run(host=os.getenv("STREAM_BIND_HOST", "127.0.0.1"), port=STREAM_PORT, debug=False, threaded=True, use_reloader=False)
     except Exception as e:
         print(f"Flask stream server failed: {e}")
 
@@ -512,8 +511,6 @@ def main():
         current_frame = None
 
         if not source_is_webcam:
-            # Wait for the browser to start consuming /video_feed so
-            # processing and visualization start together.
             stream_client_event.clear()
             print("Waiting for stream client connection...")
             wait_deadline = time.time() + 12.0
@@ -632,9 +629,6 @@ def main():
                             active_beans_to_keep.append(bean)
 
                 active_beans = active_beans_to_keep
-
-                # Use only pre-existing matched tracks for suppression so
-                # multiple close beans can spawn in the same frame.
                 suppression_reference_beans = [b for b in active_beans if b.frames_lost == 0]
 
                 for i, (blob_centroid, blob_box) in enumerate(current_blobs):
@@ -667,8 +661,6 @@ def main():
                 for bean in active_beans:
                     bx, by, bw, bh = bean.box
                     cx, cy = bean.centroid
-                    
-                    touching_left = bx < EDGE_MARGIN
                     touching_right = (bx + bw) > (w_orig - EDGE_MARGIN)
                     cx_ratio = cx / float(max(w_orig, 1))
                     horizontal_ready = (

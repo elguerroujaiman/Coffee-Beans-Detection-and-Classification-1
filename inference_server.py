@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import base64
+from pathlib import Path
 
 app = Flask(__name__)
 CLASSIFIER_MODEL_PATH = 'coffee_mobile_net_tuned.h5'
@@ -56,18 +57,28 @@ def is_valid_contour(cnt):
 
     return x, y, w, h
 
+@app.route('/health', methods=['GET'])
+def health():
+    if model is None:
+        return jsonify({"status": "error", "error": "Model is not loaded"}), 503
+    return jsonify({"status": "ready"})
+
+
 @app.route('/predict', methods=['POST'])
 def predict():
     if model is None:
         return jsonify({"error": "Model not loaded"}), 500
         
-    data = request.json
+    data = request.get_json(silent=True) or {}
     image_path = data.get('image_path')
-    
-    if not image_path or not os.path.exists(image_path):
+    if not isinstance(image_path, str) or not image_path:
         return jsonify({"error": "Invalid image path"}), 400
+    resolved_path = Path(image_path).resolve()
+    allowed_root = Path("temp_uploads").resolve()
+    if allowed_root not in resolved_path.parents or not resolved_path.is_file():
+        return jsonify({"error": "Image path is outside the temporary upload directory"}), 400
 
-    img = cv2.imread(image_path)
+    img = cv2.imread(str(resolved_path))
     if img is None:
         return jsonify({"error": "Failed to read image"}), 400
 

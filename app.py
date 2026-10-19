@@ -15,12 +15,25 @@ import socket
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge
+from flask_wtf import CSRFProtect
+from flask_wtf.csrf import CSRFError
+from dotenv import load_dotenv
+
+load_dotenv()
+APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+configured_secret = os.getenv("FLASK_SECRET_KEY")
+if APP_ENV == "production" and not configured_secret:
+    raise RuntimeError("Set FLASK_SECRET_KEY before running with APP_ENV=production.")
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "bean-guard-local-secret-change-me")
+app.secret_key = configured_secret or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = APP_ENV == "production"
 app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+CSRFProtect(app)
 
 REMEMBER_COOKIE_NAME = "bean_guard_remember"
 REMEMBER_HINT_COOKIE_NAME = "bean_guard_remember_hint"
@@ -29,6 +42,8 @@ TAB_BOOT_COOKIE_NAME = "bean_guard_tab_boot"
 TAB_BOOT_SECONDS = 20
 WORKER_RESULT_FILE = "worker_result.json"
 UPLOAD_RUNTIME_DIR = Path("uploads/runtime")
+ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 LIVE_STATS_FILE = "live_stats.json"
 
 detection_process = None
@@ -163,7 +178,7 @@ def _stop_payload_from_worker_result():
 
 
 def start_inference_server():
-    """Launch the persistent inference server as a subprocess."""
+    """Start the model service and wait until its health endpoint is ready."""
     global inference_process
     if inference_process is None or inference_process.poll() is not None:
         print("Launching inference server...")
@@ -171,11 +186,33 @@ def start_inference_server():
             [sys.executable, "inference_server.py"],
             cwd=os.getcwd(),
         )
-        time.sleep(2)
+
+    deadline = time.monotonic() + float(os.getenv("INFERENCE_START_TIMEOUT_SEC", "120"))
+    while time.monotonic() < deadline:
+        if inference_process.poll() is not None:
+            raise RuntimeError("Inference service stopped while loading the model.")
+        try:
+            response = requests.get("http://127.0.0.1:5001/health", timeout=1)
+            if response.status_code == 200:
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(0.25)
+    raise RuntimeError("Inference service did not become ready before the startup timeout.")
 
 
 def find_available_stream_port(start_port=5002, end_port=5100):
     """Find an available localhost port for the MJPEG stream."""
+    configured_port = os.getenv("STREAM_PORT", "").strip()
+    if configured_port:
+        try:
+            port = int(configured_port)
+        except ValueError:
+            return None
+        if not 1 <= port <= 65535:
+            return None
+        start_port = end_port = port
+
     for port in range(start_port, end_port + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
@@ -229,7 +266,7 @@ def load_and_enforce_auth():
                 g.user = user
                 _set_logged_in_user(user)
 
-    public_endpoints = {"login", "signup", "static"}
+    public_endpoints = {"login", "signup", "static", "healthz"}
     if request.endpoint is None or request.endpoint in public_endpoints:
         return None
 
@@ -239,6 +276,32 @@ def load_and_enforce_auth():
         return redirect(url_for("login", next=request.path))
 
     return None
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    message = "Request verification failed. Reload the page and try again."
+    if request.path in {"/start", "/stop", "/detect_image", "/upload_video"}:
+        return jsonify({"status": "error", "message": message}), 400
+    return message, 400
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_too_large(error):
+    return jsonify({"status": "error", "error": "Upload exceeds the configured size limit."}), 413
+
+
+@app.route("/healthz")
+def healthz():
+    if inference_process is None or inference_process.poll() is not None:
+        return jsonify({"status": "starting"}), 503
+    try:
+        response = requests.get("http://127.0.0.1:5001/health", timeout=1)
+        if response.status_code != 200:
+            return jsonify({"status": "starting"}), 503
+    except requests.RequestException:
+        return jsonify({"status": "starting"}), 503
+    return jsonify({"status": "ok"})
 
 
 @app.context_processor
@@ -290,6 +353,7 @@ def login():
                     max_age=REMEMBER_DAYS * 24 * 60 * 60,
                     httponly=True,
                     samesite="Lax",
+                    secure=APP_ENV == "production",
                 )
                 response.set_cookie(
                     REMEMBER_HINT_COOKIE_NAME,
@@ -297,6 +361,7 @@ def login():
                     max_age=REMEMBER_DAYS * 24 * 60 * 60,
                     httponly=False,
                     samesite="Lax",
+                    secure=APP_ENV == "production",
                 )
                 response.delete_cookie(TAB_BOOT_COOKIE_NAME)
             else:
@@ -306,6 +371,7 @@ def login():
                     max_age=TAB_BOOT_SECONDS,
                     httponly=False,
                     samesite="Lax",
+                    secure=APP_ENV == "production",
                 )
             return response
 
@@ -350,6 +416,7 @@ def signup():
                     max_age=TAB_BOOT_SECONDS,
                     httponly=False,
                     samesite="Lax",
+                    secure=APP_ENV == "production",
                 )
                 return response
             else:
@@ -358,7 +425,7 @@ def signup():
     return render_template("signup.html", error=error)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     response = redirect(url_for("login"))
     remember_raw = request.cookies.get(REMEMBER_COOKIE_NAME)
@@ -389,12 +456,19 @@ def realtime_detection_page():
     return render_template("realtime_detection.html")
 
 
-@app.route("/start")
+@app.route("/start", methods=["POST"])
 def start_detection():
     """Start the real-time detection worker."""
     global detection_process, active_stream_port
 
     source = request.args.get("source", "1")
+
+    if not source.isdigit():
+        source_path = Path(source).resolve()
+        if not _is_runtime_upload_path(source) or not source_path.is_file():
+            return jsonify({"status": "error", "message": "Upload a video through the app first."}), 400
+        if source_path.suffix.lower() not in ALLOWED_VIDEO_SUFFIXES:
+            return jsonify({"status": "error", "message": "Unsupported video format."}), 400
 
     if detection_process and detection_process.poll() is None:
         return jsonify({"status": "error", "message": "Detection already running"})
@@ -449,7 +523,7 @@ def start_detection():
     })
 
 
-@app.route("/stop")
+@app.route("/stop", methods=["POST"])
 def stop_detection():
     """Stop the current detection process gracefully."""
     global detection_process, active_stream_port
@@ -518,29 +592,34 @@ def detect_image():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        return jsonify({"error": "Use a JPG, PNG, or WEBP image."}), 400
+
     start_inference_server()
 
     temp_dir = Path("temp_uploads")
     temp_dir.mkdir(exist_ok=True)
-    input_path = temp_dir / "test_input.jpg"
+    input_path = temp_dir / f"image_{uuid4().hex}{suffix}"
     file.save(str(input_path))
 
     try:
         response = requests.post(
             "http://127.0.0.1:5001/predict",
-            json={"image_path": str(input_path.absolute())},
-            timeout=10,
+            json={"image_path": str(input_path.resolve())},
+            timeout=60,
         )
-
         if response.status_code != 200:
-            return jsonify({"error": f"Inference error: {response.text}"}), 500
+            return jsonify({"error": "Image inference failed. Check the app logs."}), 500
 
         result = response.json()
-
         img_orig = cv2.imread(str(input_path))
-        _, orig_encoded = cv2.imencode(".jpg", img_orig)
+        if img_orig is None:
+            return jsonify({"error": "The uploaded file is not a readable image."}), 400
+        encoded, orig_encoded = cv2.imencode(".jpg", img_orig)
+        if not encoded:
+            return jsonify({"error": "Could not encode the uploaded image."}), 500
         orig_b64 = base64.b64encode(orig_encoded).decode("utf-8")
-
         return jsonify({
             "status": "success",
             "good_count": result["good"],
@@ -549,8 +628,12 @@ def detect_image():
             "original": f"data:image/jpeg;base64,{orig_b64}",
             "detected": f"data:image/jpeg;base64,{result['detected_b64']}",
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except requests.RequestException:
+        return jsonify({"error": "The inference service did not respond."}), 503
+    except (KeyError, ValueError):
+        return jsonify({"error": "The inference service returned an invalid response."}), 502
+    finally:
+        input_path.unlink(missing_ok=True)
 
 
 @app.route("/history")
@@ -568,7 +651,7 @@ def session_detail(session_id):
     return render_template("session.html", session=session_row) if session_row else ("Not found", 404)
 
 
-@app.route("/delete/<int:session_id>")
+@app.route("/delete/<int:session_id>", methods=["POST"])
 def delete_session(session_id):
     """Remove a session owned by logged-in user."""
     database.delete_session(g.user["id"], session_id)
@@ -586,7 +669,9 @@ def upload_video():
 
     video_dir = UPLOAD_RUNTIME_DIR
     video_dir.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file.filename).suffix.strip() or ".mp4"
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_VIDEO_SUFFIXES:
+        return jsonify({"status": "error", "error": "Use an MP4, MOV, AVI, MKV, or WEBM video."}), 400
     safe_name = f"upload_{int(time.time() * 1000)}_{uuid4().hex[:8]}{suffix}"
     video_path = video_dir / safe_name
     file.save(str(video_path))

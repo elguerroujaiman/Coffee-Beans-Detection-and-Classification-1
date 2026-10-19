@@ -30,6 +30,7 @@
             {% endif %}
 
             <form id="signup-form" method="POST" action="/signup" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="username" id="signup-username-hidden">
                 <input type="hidden" name="password" id="signup-password-hidden">
                 <input type="hidden" name="confirm_password" id="signup-confirm-hidden">

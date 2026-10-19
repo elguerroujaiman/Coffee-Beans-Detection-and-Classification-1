@@ -4,10 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>CoffeeBean Classifier | Real-time Detection</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="{{ url_for('static', filename='auth_session.js') }}"></script>
+    <script src="{{ url_for('static', filename='auth_session.js') }}" defer></script>
 </head>
 
 <body>
@@ -22,7 +23,7 @@
             <a href="/realtime_detection" class="active"><i class="fas fa-video"></i> Real-time</a>
             <a href="/history"><i class="fas fa-history"></i> History</a>
             <span class="nav-user"><i class="fas fa-user"></i> {{ current_user.username }}</span>
-            <a href="/logout"><i class="fas fa-right-from-bracket"></i> Logout</a>
+            <form action="/logout" method="post" class="nav-logout-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav-logout"><i class="fas fa-right-from-bracket"></i> Logout</button></form>
         </div>
     </nav>
 
@@ -118,6 +119,7 @@
         let finalizingSession = false;
 
         const toastWrap = document.getElementById('toast-wrap');
+        const csrfHeaders = () => ({ 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content });
 
         function showToast(message, type = 'info', duration = 3000) {
             if (!message) return;
@@ -180,7 +182,7 @@
             formData.append('video', file);
 
             try {
-                const res = await fetch('/upload_video', { method: 'POST', body: formData });
+                const res = await fetch('/upload_video', { method: 'POST', headers: csrfHeaders(), body: formData });
                 const data = await res.json();
                 if (data.status === 'success') {
                     selectedVideoPath = data.video_path;
@@ -274,7 +276,7 @@
             streamOverlay.style.display = 'flex';
 
             try {
-                const res = await fetch(`/start?source=${encodeURIComponent(source)}`);
+                const res = await fetch(`/start?source=${encodeURIComponent(source)}`, { method: 'POST', headers: csrfHeaders() });
                 const data = await res.json();
 
                 if (data.status === 'success') {
@@ -316,7 +318,7 @@
             runStopToasts();
 
             try {
-                const res = await fetch('/stop');
+                const res = await fetch('/stop', { method: 'POST', headers: csrfHeaders() });
                 const data = await res.json();
 
                 if (data.status === 'success') {
@@ -368,7 +370,7 @@
             runStopToasts();
 
             try {
-                const res = await fetch('/stop');
+                const res = await fetch('/stop', { method: 'POST', headers: csrfHeaders() });
                 const data = await res.json();
                 if (data.status === 'success') {
                     evaluateStopResult(data);

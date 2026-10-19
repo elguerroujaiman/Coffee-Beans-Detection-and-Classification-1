@@ -1,0 +1,29 @@
+services:
+  classifier:
+    build: .
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /data/sessions.db
+      STREAM_BIND_HOST: 0.0.0.0
+      STREAM_PORT: ${STREAM_PORT:-5002}
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:${STREAM_PORT:-5002}:${STREAM_PORT:-5002}"
+    volumes:
+      - classifier_data:/data
+      - classifier_uploads:/app/uploads
+      - classifier_temp:/app/temp_uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  classifier_data:
+  classifier_uploads:
+  classifier_temp:

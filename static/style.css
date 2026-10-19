@@ -79,6 +79,36 @@ body {
     color: var(--accent);
 }
 
+.nav-links .nav-logout-form {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+.nav-links .nav-logout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.nav-links .nav-logout:hover {
+    color: var(--accent);
+}
+
+.inline-action-form {
+    display: inline-flex;
+    margin: 0;
+}
+
 .nav-user {
     color: var(--text-secondary);
     display: flex;

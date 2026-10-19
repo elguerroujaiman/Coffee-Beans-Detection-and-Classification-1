@@ -4,10 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>CoffeeBean Classifier | Image Detection</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="{{ url_for('static', filename='auth_session.js') }}"></script>
+    <script src="{{ url_for('static', filename='auth_session.js') }}" defer></script>
 </head>
 
 <body>
@@ -22,7 +23,7 @@
             <a href="/realtime_detection"><i class="fas fa-video"></i> Real-time</a>
             <a href="/history"><i class="fas fa-history"></i> History</a>
             <span class="nav-user"><i class="fas fa-user"></i> {{ current_user.username }}</span>
-            <a href="/logout"><i class="fas fa-right-from-bracket"></i> Logout</a>
+            <form action="/logout" method="post" class="nav-logout-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="nav-logout"><i class="fas fa-right-from-bracket"></i> Logout</button></form>
         </div>
     </nav>
 
@@ -97,6 +98,7 @@
         const origContainer = document.getElementById('orig-container');
         const detectContainer = document.getElementById('detect-container');
         const toastWrap = document.getElementById('toast-wrap');
+        const csrfHeaders = () => ({ 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content });
 
         function showToast(message, type = 'info', duration = 3000) {
             if (!message) return;
@@ -148,6 +150,7 @@
             try {
                 const response = await fetch('/detect_image', {
                     method: 'POST',
+                    headers: csrfHeaders(),
                     body: formData
                 });
 

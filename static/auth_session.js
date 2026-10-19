@@ -42,5 +42,15 @@
         return;
     }
 
-    window.location.replace("/logout");
+    var tokenInput = document.querySelector('.nav-logout-form input[name="csrf_token"]');
+    if (tokenInput) {
+        fetch("/logout", {
+            method: "POST",
+            headers: { "X-CSRFToken": tokenInput.value }
+        }).finally(function () {
+            window.location.replace("/login");
+        });
+    } else {
+        window.location.replace("/login");
+    }
 })();

@@ -1,8 +1,9 @@
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB_PATH = Path("sessions.db")
+DB_PATH = Path(os.getenv("DATABASE_PATH", "sessions.db")).expanduser()
 
 
 def _utc_now_iso():
@@ -10,6 +11,7 @@ def _utc_now_iso():
 
 
 def _connect():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
